@@ -563,6 +563,10 @@
                   state={appState[currentDepartment]}
                   onClose={closeModal}
                   onUpdate={(updates) => updateDepartment(currentDepartment, updates)}
+                  geoData={geoData}
+                  bounds={bounds}
+                  convertToSVGPath={convertToSVGPath}
+                  getDepartmentColor={getDepartmentColor}
                 />
               )}
             </div>
@@ -911,7 +915,7 @@
           );
         }
 
-        function DepartmentModal({ code, department, state, onClose, onUpdate }) {
+        function DepartmentModal({ code, department, state, onClose, onUpdate, geoData, bounds, convertToSVGPath, getDepartmentColor }) {
           const [visitLevel, setVisitLevel] = useState(state.visitLevel);
           const [visitedCities, setVisitedCities] = useState(state.visitedCities);
           const [customCities, setCustomCities] = useState(state.customCities);
@@ -961,6 +965,55 @@
                 </div>
 
                 <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                  {/* Department Map */}
+                  {geoData && bounds && (
+                    <div className="bg-gray-100 rounded-lg p-4">
+                      <h3 className="font-semibold text-gray-700 mb-3 text-lg">Carte du département</h3>
+                      <div className="bg-white rounded-lg p-4 shadow-inner">
+                        <svg viewBox="0 0 1000 1100" className="w-full h-auto" style={{ maxHeight: '300px' }}>
+                          {/* Department shape */}
+                          {geoData.features
+                            .filter(feature => feature.properties.code === code)
+                            .map(feature => {
+                              const path = convertToSVGPath(feature.geometry.coordinates, bounds);
+                              return (
+                                <path
+                                  key={code}
+                                  d={path}
+                                  fill={getDepartmentColor(code, state)}
+                                  stroke="#333"
+                                  strokeWidth="3"
+                                  opacity="0.7"
+                                />
+                              );
+                            })}
+
+                          {/* City markers */}
+                          {visitedCities.map(city => {
+                            if (!CITY_COORDINATES[city]) return null;
+                            const [lon, lat] = CITY_COORDINATES[city];
+                            const cityX = ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
+                            const cityY = ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 1100;
+
+                            return (
+                              <g key={city}>
+                                <circle
+                                  cx={cityX}
+                                  cy={cityY}
+                                  r="8"
+                                  fill="#e74c3c"
+                                  stroke="#fff"
+                                  strokeWidth="3"
+                                />
+                                <title>{city}</title>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Rating */}
                   <div>
                     <label className="block font-semibold text-gray-700 mb-3 text-lg">
