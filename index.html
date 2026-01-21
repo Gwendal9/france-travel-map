@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ma Carte de France Interactive</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Map textures and styling */
+        .map-container {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            position: relative;
+        }
+        
+        .map-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        
+        .department-path {
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .department-path:hover {
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)) brightness(1.1);
+        }
+        
+        /* City markers with glow */
+        .city-marker {
+            filter: drop-shadow(0 0 3px rgba(231, 76, 60, 0.6));
+            animation: pulse 2s ease-in-out infinite;
+            cursor: pointer;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.1); }
+        }
+        
+        /* Rating bar */
+        .rating-bar {
+            cursor: pointer;
+        }
+        
+        .rating-bar:hover {
+            transform: scaleY(1.05);
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const GEOJSON_URL = 'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson';
+
+        const departmentInfo = {
+          '01': { name: 'Ain', cities: ['Bourg-en-Bresse', 'Oyonnax', 'Belley', 'Gex', 'Nantua'] },
+          '02': { name: 'Aisne', cities: ['Laon', 'Saint-Quentin', 'Soissons', 'Château-Thierry', 'Vervins'] },
+          '03': { name: 'Allier', cities: ['Moulins', 'Vichy', 'Montluçon', 'Cusset', 'Yzeure'] },
+          '04': { name: 'Alpes-de-Haute-Provence', cities: ['Digne-les-Bains', 'Manosque', 'Sisteron', 'Barcelonnette', 'Castellane'] },
+          '05': { name: 'Hautes-Alpes', cities: ['Gap', 'Briançon', 'Embrun', 'L\'Argentière-la-Bessée', 'Tallard'] },
+          '06': { name: 'Alpes-Maritimes', cities: ['Nice', 'Cannes', 'Antibes', 'Grasse', 'Menton'] },
+          '07': { name: 'Ardèche', cities: ['Privas', 'Annonay', 'Aubenas', 'Tournon-sur-Rhône', 'Guilherand-Granges'] },
+          '08': { name: 'Ardennes', cities: ['Charleville-Mézières', 'Sedan', 'Rethel', 'Givet', 'Revin'] },
+          '09': { name: 'Ariège', cities: ['Foix', 'Pamiers', 'Saint-Girons', 'Lavelanet', 'Tarascon-sur-Ariège'] },
+          '10': { name: 'Aube', cities: ['Troyes', 'Romilly-sur-Seine', 'La Chapelle-Saint-Luc', 'Saint-André-les-Vergers', 'Sainte-Savine'] },
+          '11': { name: 'Aude', cities: ['Carcassonne', 'Narbonne', 'Castelnaudary', 'Limoux', 'Lézignan-Corbières'] },
+          '12': { name: 'Aveyron', cities: ['Rodez', 'Millau', 'Villefranche-de-Rouergue', 'Decazeville', 'Onet-le-Château'] },
+          '13': { name: 'Bouches-du-Rhône', cities: ['Marseille', 'Aix-en-Provence', 'Arles', 'Martigues', 'Aubagne'] },
+          '14': { name: 'Calvados', cities: ['Caen', 'Hérouville-Saint-Clair', 'Lisieux', 'Bayeux', 'Vire'] },
+          '15': { name: 'Cantal', cities: ['Aurillac', 'Saint-Flour', 'Mauriac', 'Arpajon-sur-Cère', 'Ytrac'] },
+          '16': { name: 'Charente', cities: ['Angoulême', 'Cognac', 'Soyaux', 'La Couronne', 'Ruelle-sur-Touvre'] },
+          '17': { name: 'Charente-Maritime', cities: ['La Rochelle', 'Rochefort', 'Saintes', 'Royan', 'Aytré'] },
+          '18': { name: 'Cher', cities: ['Bourges', 'Vierzon', 'Saint-Amand-Montrond', 'Mehun-sur-Yèvre', 'Saint-Doulchard'] },
+          '19': { name: 'Corrèze', cities: ['Tulle', 'Brive-la-Gaillarde', 'Ussel', 'Égletons', 'Malemort-sur-Corrèze'] },
+          '21': { name: 'Côte-d\'Or', cities: ['Dijon', 'Beaune', 'Chenôve', 'Talant', 'Quetigny'] },
+          '22': { name: 'Côtes-d\'Armor', cities: ['Saint-Brieuc', 'Lannion', 'Plérin', 'Lamballe', 'Dinan'] },
+          '23': { name: 'Creuse', cities: ['Guéret', 'Aubusson', 'La Souterraine', 'Bourganeuf', 'Chambon-sur-Voueize'] },
+          '24': { name: 'Dordogne', cities: ['Périgueux', 'Bergerac', 'Sarlat-la-Canéda', 'Coulounieix-Chamiers', 'Trélissac'] },
+          '25': { name: 'Doubs', cities: ['Besançon', 'Montbéliard', 'Pontarlier', 'Audincourt', 'Valentigney'] },
+          '26': { name: 'Drôme', cities: ['Valence', 'Romans-sur-Isère', 'Montélimar', 'Pierrelatte', 'Bourg-lès-Valence'] },
+          '27': { name: 'Eure', cities: ['Évreux', 'Louviers', 'Vernon', 'Val-de-Reuil', 'Gisors'] },
+          '28': { name: 'Eure-et-Loir', cities: ['Chartres', 'Dreux', 'Lucé', 'Châteaudun', 'Mainvilliers'] },
+          '29': { name: 'Finistère', cities: ['Brest', 'Quimper', 'Concarneau', 'Morlaix', 'Douarnenez'] },
+          '2A': { name: 'Corse-du-Sud', cities: ['Ajaccio', 'Porto-Vecchio', 'Propriano', 'Sartène', 'Bonifacio'] },
+          '2B': { name: 'Haute-Corse', cities: ['Bastia', 'Corte', 'Calvi', 'L\'Île-Rousse', 'Biguglia'] },
+          '30': { name: 'Gard', cities: ['Nîmes', 'Alès', 'Bagnols-sur-Cèze', 'Beaucaire', 'Saint-Gilles'] },
+          '31': { name: 'Haute-Garonne', cities: ['Toulouse', 'Colomiers', 'Tournefeuille', 'Muret', 'Blagnac'] },
+          '32': { name: 'Gers', cities: ['Auch', 'Condom', 'Fleurance', 'L\'Isle-Jourdain', 'Mirande'] },
+          '33': { name: 'Gironde', cities: ['Bordeaux', 'Mérignac', 'Pessac', 'Talence', 'Villenave-d\'Ornon'] },
+          '34': { name: 'Hérault', cities: ['Montpellier', 'Béziers', 'Sète', 'Lunel', 'Agde'] },
+          '35': { name: 'Ille-et-Vilaine', cities: ['Rennes', 'Saint-Malo', 'Fougères', 'Vitré', 'Cesson-Sévigné'] },
+          '36': { name: 'Indre', cities: ['Châteauroux', 'Issoudun', 'Le Blanc', 'La Châtre', 'Argenton-sur-Creuse'] },
+          '37': { name: 'Indre-et-Loire', cities: ['Tours', 'Joué-lès-Tours', 'Saint-Pierre-des-Corps', 'Saint-Cyr-sur-Loire', 'Amboise'] },
+          '38': { name: 'Isère', cities: ['Grenoble', 'Saint-Martin-d\'Hères', 'Vienne', 'Échirolles', 'Bourgoin-Jallieu'] },
+          '39': { name: 'Jura', cities: ['Lons-le-Saunier', 'Dole', 'Saint-Claude', 'Champagnole', 'Morez'] },
+          '40': { name: 'Landes', cities: ['Mont-de-Marsan', 'Dax', 'Biscarrosse', 'Saint-Paul-lès-Dax', 'Tarnos'] },
+          '41': { name: 'Loir-et-Cher', cities: ['Blois', 'Romorantin-Lanthenay', 'Vendôme', 'Vineuil', 'Saint-Gervais-la-Forêt'] },
+          '42': { name: 'Loire', cities: ['Saint-Étienne', 'Roanne', 'Saint-Chamond', 'Firminy', 'Montbrison'] },
+          '43': { name: 'Haute-Loire', cities: ['Le Puy-en-Velay', 'Monistrol-sur-Loire', 'Yssingeaux', 'Brioude', 'Aurec-sur-Loire'] },
+          '44': { name: 'Loire-Atlantique', cities: ['Nantes', 'Saint-Nazaire', 'Saint-Herblain', 'Rezé', 'Saint-Sébastien-sur-Loire'] },
+          '45': { name: 'Loiret', cities: ['Orléans', 'Fleury-les-Aubrais', 'Olivet', 'Saint-Jean-de-Braye', 'Châlette-sur-Loing'] },
+          '46': { name: 'Lot', cities: ['Cahors', 'Figeac', 'Gourdon', 'Souillac', 'Prayssac'] },
+          '47': { name: 'Lot-et-Garonne', cities: ['Agen', 'Villeneuve-sur-Lot', 'Marmande', 'Le Passage', 'Nérac'] },
+          '48': { name: 'Lozère', cities: ['Mende', 'Florac', 'Marvejols', 'Saint-Chély-d\'Apcher', 'Langogne'] },
+          '49': { name: 'Maine-et-Loire', cities: ['Angers', 'Cholet', 'Saumur', 'Avrillé', 'Les Ponts-de-Cé'] },
+          '50': { name: 'Manche', cities: ['Saint-Lô', 'Cherbourg-en-Cotentin', 'Équeurdreville-Hainneville', 'Tourlaville', 'Granville'] },
+          '51': { name: 'Marne', cities: ['Reims', 'Châlons-en-Champagne', 'Épernay', 'Vitry-le-François', 'Tinqueux'] },
+          '52': { name: 'Haute-Marne', cities: ['Chaumont', 'Saint-Dizier', 'Langres', 'Nogent', 'Joinville'] },
+          '53': { name: 'Mayenne', cities: ['Laval', 'Mayenne', 'Château-Gontier', 'Évron', 'Changé'] },
+          '54': { name: 'Meurthe-et-Moselle', cities: ['Nancy', 'Vandœuvre-lès-Nancy', 'Lunéville', 'Toul', 'Villers-lès-Nancy'] },
+          '55': { name: 'Meuse', cities: ['Bar-le-Duc', 'Verdun', 'Commercy', 'Saint-Mihiel', 'Stenay'] },
+          '56': { name: 'Morbihan', cities: ['Vannes', 'Lorient', 'Lanester', 'Ploemeur', 'Hennebont'] },
+          '57': { name: 'Moselle', cities: ['Metz', 'Thionville', 'Montigny-lès-Metz', 'Forbach', 'Sarreguemines'] },
+          '58': { name: 'Nièvre', cities: ['Nevers', 'Cosne-Cours-sur-Loire', 'Varennes-Vauzelles', 'Decize', 'La Charité-sur-Loire'] },
+          '59': { name: 'Nord', cities: ['Lille', 'Tourcoing', 'Roubaix', 'Dunkerque', 'Villeneuve-d\'Ascq'] },
+          '60': { name: 'Oise', cities: ['Beauvais', 'Compiègne', 'Creil', 'Senlis', 'Nogent-sur-Oise'] },
+          '61': { name: 'Orne', cities: ['Alençon', 'Flers', 'Argentan', 'L\'Aigle', 'La Ferté-Macé'] },
+          '62': { name: 'Pas-de-Calais', cities: ['Arras', 'Boulogne-sur-Mer', 'Calais', 'Lens', 'Liévin'] },
+          '63': { name: 'Puy-de-Dôme', cities: ['Clermont-Ferrand', 'Riom', 'Cournon-d\'Auvergne', 'Chamalières', 'Issoire'] },
+          '64': { name: 'Pyrénées-Atlantiques', cities: ['Pau', 'Bayonne', 'Anglet', 'Biarritz', 'Hendaye'] },
+          '65': { name: 'Hautes-Pyrénées', cities: ['Tarbes', 'Lourdes', 'Bagnères-de-Bigorre', 'Aureilhan', 'Lannemezan'] },
+          '66': { name: 'Pyrénées-Orientales', cities: ['Perpignan', 'Canet-en-Roussillon', 'Saint-Estève', 'Argelès-sur-Mer', 'Céret'] },
+          '67': { name: 'Bas-Rhin', cities: ['Strasbourg', 'Haguenau', 'Schiltigheim', 'Illkirch-Graffenstaden', 'Sélestat'] },
+          '68': { name: 'Haut-Rhin', cities: ['Mulhouse', 'Colmar', 'Saint-Louis', 'Wittenheim', 'Illzach'] },
+          '69': { name: 'Rhône', cities: ['Lyon', 'Villeurbanne', 'Vénissieux', 'Caluire-et-Cuire', 'Saint-Priest'] },
+          '70': { name: 'Haute-Saône', cities: ['Vesoul', 'Luxeuil-les-Bains', 'Héricourt', 'Lure', 'Gray'] },
+          '71': { name: 'Saône-et-Loire', cities: ['Mâcon', 'Chalon-sur-Saône', 'Le Creusot', 'Montceau-les-Mines', 'Autun'] },
+          '72': { name: 'Sarthe', cities: ['Le Mans', 'Sablé-sur-Sarthe', 'Allonnes', 'La Flèche', 'Coulaines'] },
+          '73': { name: 'Savoie', cities: ['Chambéry', 'Aix-les-Bains', 'Albertville', 'Saint-Jean-de-Maurienne', 'Montmélian'] },
+          '74': { name: 'Haute-Savoie', cities: ['Annecy', 'Thonon-les-Bains', 'Annemasse', 'Cluses', 'Évian-les-Bains'] },
+          '75': { name: 'Paris', cities: ['Paris'] },
+          '76': { name: 'Seine-Maritime', cities: ['Rouen', 'Le Havre', 'Dieppe', 'Sotteville-lès-Rouen', 'Saint-Étienne-du-Rouvray'] },
+          '77': { name: 'Seine-et-Marne', cities: ['Meaux', 'Melun', 'Chelles', 'Pontault-Combault', 'Savigny-le-Temple'] },
+          '78': { name: 'Yvelines', cities: ['Versailles', 'Sartrouville', 'Mantes-la-Jolie', 'Saint-Germain-en-Laye', 'Poissy'] },
+          '79': { name: 'Deux-Sèvres', cities: ['Niort', 'Bressuire', 'Thouars', 'Parthenay', 'Saint-Maixent-l\'École'] },
+          '80': { name: 'Somme', cities: ['Amiens', 'Abbeville', 'Albert', 'Péronne', 'Montdidier'] },
+          '81': { name: 'Tarn', cities: ['Albi', 'Castres', 'Gaillac', 'Graulhet', 'Mazamet'] },
+          '82': { name: 'Tarn-et-Garonne', cities: ['Montauban', 'Castelsarrasin', 'Moissac', 'Caussade', 'Valence'] },
+          '83': { name: 'Var', cities: ['Toulon', 'La Seyne-sur-Mer', 'Hyères', 'Fréjus', 'Draguignan'] },
+          '84': { name: 'Vaucluse', cities: ['Avignon', 'Carpentras', 'Orange', 'Cavaillon', 'Apt'] },
+          '85': { name: 'Vendée', cities: ['La Roche-sur-Yon', 'Les Sables-d\'Olonne', 'Challans', 'Fontenay-le-Comte', 'Luçon'] },
+          '86': { name: 'Vienne', cities: ['Poitiers', 'Châtellerault', 'Buxerolles', 'Loudun', 'Saint-Benoît'] },
+          '87': { name: 'Haute-Vienne', cities: ['Limoges', 'Saint-Junien', 'Panazol', 'Couzeix', 'Le Palais-sur-Vienne'] },
+          '88': { name: 'Vosges', cities: ['Épinal', 'Saint-Dié-des-Vosges', 'Gérardmer', 'Remiremont', 'Golbey'] },
+          '89': { name: 'Yonne', cities: ['Auxerre', 'Sens', 'Joigny', 'Avallon', 'Migennes'] },
+          '90': { name: 'Territoire de Belfort', cities: ['Belfort', 'Delle', 'Valdoie', 'Beaucourt', 'Danjoutin'] },
+          '91': { name: 'Essonne', cities: ['Évry-Courcouronnes', 'Corbeil-Essonnes', 'Massy', 'Savigny-sur-Orge', 'Sainte-Geneviève-des-Bois'] },
+          '92': { name: 'Hauts-de-Seine', cities: ['Nanterre', 'Boulogne-Billancourt', 'Colombes', 'Asnières-sur-Seine', 'Courbevoie'] },
+          '93': { name: 'Seine-Saint-Denis', cities: ['Bobigny', 'Saint-Denis', 'Montreuil', 'Aubervilliers', 'Aulnay-sous-Bois'] },
+          '94': { name: 'Val-de-Marne', cities: ['Créteil', 'Vitry-sur-Seine', 'Champigny-sur-Marne', 'Saint-Maur-des-Fossés', 'Ivry-sur-Seine'] },
+          '95': { name: 'Val-d\'Oise', cities: ['Cergy', 'Argenteuil', 'Sarcelles', 'Garges-lès-Gonesse', 'Franconville'] }
+        };
+
+        const VISIT_LEVELS = {
+          unvisited: { label: 'Non visité', color: '#4a4a4a' },
+          'one-night': { label: 'Une nuit', color: '#a8d5e2' },
+          'one-week': { label: 'Une semaine', color: '#5ca9c9' },
+          regular: { label: 'Régulièrement', color: '#2171b5' }
+        };
+
+        const REGIONS = {
+          'Auvergne-Rhône-Alpes': ['01', '03', '07', '15', '26', '38', '42', '43', '63', '69', '73', '74'],
+          'Bourgogne-Franche-Comté': ['21', '25', '39', '58', '70', '71', '89', '90'],
+          'Bretagne': ['22', '29', '35', '56'],
+          'Centre-Val de Loire': ['18', '28', '36', '37', '41', '45'],
+          'Corse': ['2A', '2B'],
+          'Grand Est': ['08', '10', '51', '52', '54', '55', '57', '67', '68', '88'],
+          'Hauts-de-France': ['02', '59', '60', '62', '80'],
+          'Île-de-France': ['75', '77', '78', '91', '92', '93', '94', '95'],
+          'Normandie': ['14', '27', '50', '61', '76'],
+          'Nouvelle-Aquitaine': ['16', '17', '19', '23', '24', '33', '40', '47', '64', '79', '86', '87'],
+          'Occitanie': ['09', '11', '12', '30', '31', '32', '34', '46', '48', '65', '66', '81', '82'],
+          'Pays de la Loire': ['44', '49', '53', '72', '85'],
+          'Provence-Alpes-Côte d\'Azur': ['04', '05', '06', '13', '83', '84']
+        };
+
+        function FranceMap() {
+          const [geoData, setGeoData] = useState(null);
+          const [loading, setLoading] = useState(true);
+          const [appState, setAppState] = useState(() => {
+            const saved = localStorage.getItem('franceMapStateV2');
+            if (saved) return JSON.parse(saved);
+            
+            const initialState = {};
+            Object.keys(departmentInfo).forEach(code => {
+              initialState[code] = {
+                visitLevel: 'unvisited',
+                visitedCities: [],
+                customCities: [],
+                notes: '',
+                rating: 0,
+                wishlist: []
+              };
+            });
+            return initialState;
+          });
+
+          const [plannedTrips, setPlannedTrips] = useState(() => {
+            const saved = localStorage.getItem('franceMapPlannedTrips');
+            return saved ? JSON.parse(saved) : [];
+          });
+
+          const [modalOpen, setModalOpen] = useState(false);
+          const [currentDepartment, setCurrentDepartment] = useState(null);
+          const [activeTab, setActiveTab] = useState('map');
+
+          useEffect(() => {
+            fetch(GEOJSON_URL)
+              .then(res => res.json())
+              .then(data => {
+                setGeoData(data);
+                setLoading(false);
+              })
+              .catch(err => {
+                console.error('Erreur chargement GeoJSON:', err);
+                setLoading(false);
+              });
+          }, []);
+
+          useEffect(() => {
+            localStorage.setItem('franceMapStateV2', JSON.stringify(appState));
+          }, [appState]);
+
+          useEffect(() => {
+            localStorage.setItem('franceMapPlannedTrips', JSON.stringify(plannedTrips));
+          }, [plannedTrips]);
+
+          const openModal = (code) => {
+            setCurrentDepartment(code);
+            setModalOpen(true);
+          };
+
+          const closeModal = () => {
+            setModalOpen(false);
+            setCurrentDepartment(null);
+          };
+
+          const updateDepartment = (code, updates) => {
+            setAppState(prev => ({
+              ...prev,
+              [code]: { ...prev[code], ...updates }
+            }));
+          };
+
+          const stats = {
+            totalVisited: Object.values(appState).filter(s => s.visitLevel !== 'unvisited').length,
+            percentVisited: Math.round((Object.values(appState).filter(s => s.visitLevel !== 'unvisited').length / 96) * 100),
+            regularCount: Object.values(appState).filter(s => s.visitLevel === 'regular').length,
+            citiesCount: Object.values(appState).reduce((sum, s) => sum + s.visitedCities.length, 0),
+            avgRating: (Object.values(appState).filter(s => s.rating > 0).reduce((sum, s) => sum + s.rating, 0) / Object.values(appState).filter(s => s.rating > 0).length || 0).toFixed(1),
+            wishlistCount: Object.values(appState).filter(s => s.wishlist && s.wishlist.length > 0).length,
+            regionsCompleted: Object.entries(REGIONS).filter(([region, depts]) => 
+              depts.every(code => appState[code]?.visitLevel !== 'unvisited')
+            ).length,
+            ratedCount: Object.values(appState).filter(s => s.rating > 0).length
+          };
+
+          const convertToSVGPath = (coordinates, bounds) => {
+            const paths = [];
+            
+            const projectPoint = ([lon, lat]) => {
+              const x = ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
+              const y = ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 1100;
+              return [x, y];
+            };
+
+            const processRing = (ring) => {
+              const projected = ring.map(projectPoint);
+              return 'M ' + projected.map(p => p.join(',')).join(' L ') + ' Z';
+            };
+
+            if (coordinates[0] && Array.isArray(coordinates[0][0]) && Array.isArray(coordinates[0][0][0])) {
+              coordinates.forEach(polygon => {
+                polygon.forEach(ring => {
+                  paths.push(processRing(ring));
+                });
+              });
+            } else if (coordinates[0] && Array.isArray(coordinates[0][0])) {
+              coordinates.forEach(ring => {
+                paths.push(processRing(ring));
+              });
+            }
+
+            return paths.join(' ');
+          };
+
+          const getBounds = () => {
+            if (!geoData) return null;
+            
+            let minLon = Infinity, maxLon = -Infinity;
+            let minLat = Infinity, maxLat = -Infinity;
+
+            geoData.features.forEach(feature => {
+              const coords = feature.geometry.coordinates;
+              
+              const processCoords = (c) => {
+                if (Array.isArray(c[0])) {
+                  c.forEach(processCoords);
+                } else {
+                  const [lon, lat] = c;
+                  minLon = Math.min(minLon, lon);
+                  maxLon = Math.max(maxLon, lon);
+                  minLat = Math.min(minLat, lat);
+                  maxLat = Math.max(maxLat, lat);
+                }
+              };
+
+              processCoords(coords);
+            });
+
+            return { minLon, maxLon, minLat, maxLat };
+          };
+
+          if (loading) {
+            return (
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="text-2xl text-gray-600">Chargement de la carte...</div>
+              </div>
+            );
+          }
+
+          if (!geoData) {
+            return (
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="text-xl text-red-600">Erreur de chargement de la carte</div>
+              </div>
+            );
+          }
+
+          const bounds = getBounds();
+
+          return (
+            <div className="min-h-screen bg-gray-50">
+              <div className="bg-white shadow-md sticky top-0 z-40">
+                <div className="max-w-[1600px] mx-auto px-4">
+                  <div className="flex gap-1 overflow-x-auto">
+                    <TabButton active={activeTab === 'map'} onClick={() => setActiveTab('map')}>
+                      🗺️ Carte
+                    </TabButton>
+                    <TabButton active={activeTab === 'stats'} onClick={() => setActiveTab('stats')}>
+                      📊 Statistiques
+                    </TabButton>
+                    <TabButton active={activeTab === 'planning'} onClick={() => setActiveTab('planning')}>
+                      📅 Planning
+                    </TabButton>
+                    <TabButton active={activeTab === 'wishlist'} onClick={() => setActiveTab('wishlist')}>
+                      ⭐ Wishlist
+                    </TabButton>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 md:p-8">
+                <div className="max-w-[1600px] mx-auto">
+                  {activeTab === 'map' && (
+                    <MapView 
+                      geoData={geoData}
+                      bounds={bounds}
+                      appState={appState}
+                      convertToSVGPath={convertToSVGPath}
+                      openModal={openModal}
+                      stats={stats}
+                    />
+                  )}
+
+                  {activeTab === 'stats' && (
+                    <StatsView appState={appState} stats={stats} />
+                  )}
+
+                  {activeTab === 'planning' && (
+                    <PlanningView 
+                      plannedTrips={plannedTrips}
+                      setPlannedTrips={setPlannedTrips}
+                    />
+                  )}
+
+                  {activeTab === 'wishlist' && (
+                    <WishlistView appState={appState} />
+                  )}
+                </div>
+              </div>
+
+              {modalOpen && currentDepartment && (
+                <DepartmentModal
+                  code={currentDepartment}
+                  department={departmentInfo[currentDepartment]}
+                  state={appState[currentDepartment]}
+                  onClose={closeModal}
+                  onUpdate={(updates) => updateDepartment(currentDepartment, updates)}
+                />
+              )}
+            </div>
+          );
+        }
+
+        function TabButton({ active, onClick, children }) {
+          return (
+            <button
+              onClick={onClick}
+              className={`px-6 py-3 font-semibold transition-all whitespace-nowrap ${
+                active 
+                  ? 'bg-blue-500 text-white border-b-4 border-blue-700' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {children}
+            </button>
+          );
+        }
+
+        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats }) {
+          return (
+            <>
+              <header className="text-center mb-8">
+                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-2">🗺️ Ma Carte de France</h1>
+              </header>
+
+              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                  <StatItem number={stats.totalVisited} label="Départements" sublabel="visités" />
+                  <StatItem number={`${stats.percentVisited}%`} label="De la" sublabel="France" />
+                  <StatItem number={stats.regularCount} label="Visites" sublabel="régulières" />
+                  <StatItem number={stats.citiesCount} label="Villes" sublabel="visitées" />
+                  <StatItem number={stats.ratedCount} label="Depts" sublabel="notés" />
+                  <StatItem number={stats.avgRating} label="Note" sublabel="moyenne" />
+                  <StatItem number={stats.wishlistCount} label="En" sublabel="wishlist" />
+                  <StatItem number={stats.regionsCompleted} label="Régions" sublabel="complètes" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-md p-4 md:p-8 mb-8 map-container">
+                <svg viewBox="0 0 1000 1100" className="w-full h-auto" style={{ minHeight: '600px' }}>
+                  <defs>
+                    {/* Gradient for water/ocean effect */}
+                    <linearGradient id="oceanGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: '#e0f2fe', stopOpacity: 1 }} />
+                      <stop offset="100%" style={{ stopColor: '#bae6fd', stopOpacity: 1 }} />
+                    </linearGradient>
+                    {/* Shadow filter */}
+                    <filter id="departmentShadow" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+                      <feOffset dx="0" dy="1" result="offsetblur"/>
+                      <feComponentTransfer>
+                        <feFuncA type="linear" slope="0.3"/>
+                      </feComponentTransfer>
+                      <feMerge>
+                        <feMergeNode/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  
+                  {/* Ocean background */}
+                  <rect x="0" y="0" width="1000" height="1100" fill="url(#oceanGradient)" opacity="0.3"/>
+                  
+                  <g id="departments">
+                    {geoData.features.map(feature => {
+                      const code = feature.properties.code;
+                      const path = convertToSVGPath(feature.geometry.coordinates, bounds);
+                      const state = appState[code];
+                      
+                      return (
+                        <g key={code}>
+                          <path
+                            d={path}
+                            fill={VISIT_LEVELS[state?.visitLevel || 'unvisited'].color}
+                            stroke="#fff"
+                            strokeWidth="2"
+                            className="department-path"
+                            filter="url(#departmentShadow)"
+                            onClick={() => openModal(code)}
+                          />
+                          <title>
+                            {departmentInfo[code]?.name} ({code})
+                            {state?.rating > 0 && ` - ${'⭐'.repeat(state.rating)}`}
+                          </title>
+                        </g>
+                      );
+                    })}
+                  </g>
+
+                  <g id="city-markers">
+                    {geoData.features.map(feature => {
+                      const code = feature.properties.code;
+                      const state = appState[code];
+                      
+                      if (!state || state.visitedCities.length === 0) return null;
+                      
+                      const coords = feature.geometry.coordinates;
+                      
+                      // Better centroid calculation with bounding box
+                      const getBoundingBox = (coordinates) => {
+                        let minLon = Infinity, maxLon = -Infinity;
+                        let minLat = Infinity, maxLat = -Infinity;
+                        
+                        const processCoords = (c) => {
+                          if (Array.isArray(c[0])) {
+                            c.forEach(processCoords);
+                          } else {
+                            minLon = Math.min(minLon, c[0]);
+                            maxLon = Math.max(maxLon, c[0]);
+                            minLat = Math.min(minLat, c[1]);
+                            maxLat = Math.max(maxLat, c[1]);
+                          }
+                        };
+                        
+                        processCoords(coordinates);
+                        const centerLon = (minLon + maxLon) / 2;
+                        const centerLat = (minLat + maxLat) / 2;
+                        const width = maxLon - minLon;
+                        const height = maxLat - minLat;
+                        
+                        return { centerLon, centerLat, width, height };
+                      };
+                      
+                      const bbox = getBoundingBox(coords);
+                      const x = ((bbox.centerLon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
+                      const y = ((bounds.maxLat - bbox.centerLat) / (bounds.maxLat - bounds.minLat)) * 1100;
+                      
+                      // Adaptive radius based on department size
+                      const baseRadius = Math.min(
+                        ((bbox.width / (bounds.maxLon - bounds.minLon)) * 1000) / 2,
+                        ((bbox.height / (bounds.maxLat - bounds.minLat)) * 1100) / 2
+                      );
+                      const radius = Math.max(15, Math.min(40, baseRadius * 0.6));
+                      
+                      return state.visitedCities.map((city, idx) => {
+                        // Smart placement: spiral pattern for many cities, simple circle for few
+                        let cityX, cityY;
+                        
+                        if (state.visitedCities.length === 1) {
+                          cityX = x;
+                          cityY = y;
+                        } else if (state.visitedCities.length <= 4) {
+                          const angle = (idx / state.visitedCities.length) * 2 * Math.PI;
+                          cityX = x + Math.cos(angle) * radius;
+                          cityY = y + Math.sin(angle) * radius;
+                        } else {
+                          // Spiral for many cities
+                          const spiralRadius = radius * (0.3 + (idx / state.visitedCities.length) * 0.7);
+                          const angle = idx * (Math.PI * 2 / 3); // Golden angle
+                          cityX = x + Math.cos(angle) * spiralRadius;
+                          cityY = y + Math.sin(angle) * spiralRadius;
+                        }
+                        
+                        return (
+                          <g key={`${code}-${city}`}>
+                            <circle
+                              cx={cityX}
+                              cy={cityY}
+                              r="4"
+                              fill="#e74c3c"
+                              stroke="#fff"
+                              strokeWidth="1.5"
+                              className="city-marker"
+                            />
+                            <title>{city}</title>
+                          </g>
+                        );
+                      });
+                    })}
+                  </g>
+                </svg>
+
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold text-gray-800 mb-3">Légende</h3>
+                  <div className="flex flex-wrap gap-4">
+                    {Object.entries(VISIT_LEVELS).map(([key, { label, color }]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <div className="w-8 h-5 rounded border border-gray-300" style={{ backgroundColor: color }} />
+                        <span className="text-sm text-gray-600">{label}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 ml-4">
+                      <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
+                      <span className="text-sm text-gray-600">Villes visitées</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        }
+
+        function StatsView({ appState, stats }) {
+          const regionStats = Object.entries(REGIONS).map(([region, depts]) => {
+            const visited = depts.filter(code => appState[code]?.visitLevel !== 'unvisited').length;
+            const total = depts.length;
+            const percent = Math.round((visited / total) * 100);
+            
+            return { region, visited, total, percent };
+          }).sort((a, b) => b.percent - a.percent);
+
+          const topRated = Object.entries(appState)
+            .filter(([_, state]) => state.rating > 0)
+            .sort((a, b) => b[1].rating - a[1].rating)
+            .slice(0, 10);
+
+          const ratingDistribution = [1, 2, 3, 4, 5].map(rating => ({
+            rating,
+            count: Object.values(appState).filter(s => s.rating === rating).length
+          }));
+
+          return (
+            <div className="space-y-8">
+              <h2 className="text-3xl font-bold text-gray-800">📊 Statistiques détaillées</h2>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard title="Départements visités" value={`${stats.totalVisited}/96`} subtitle={`${stats.percentVisited}% de la France`} />
+                <StatCard title="Régions complètes" value={`${stats.regionsCompleted}/13`} subtitle="Toutes visitées" />
+                <StatCard title="Note moyenne" value={stats.avgRating} subtitle={`⭐ sur 5 (${stats.ratedCount} notés)`} />
+                <StatCard title="En wishlist" value={stats.wishlistCount} subtitle="Départements à visiter" />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Progression par région */}
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">Progression par région</h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {regionStats.map(({ region, visited, total, percent }) => (
+                      <div key={region}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium">{region}</span>
+                          <span className="text-gray-600">{visited}/{total} ({percent}%)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all ${
+                              percent === 100 ? 'bg-green-500' : 'bg-blue-500'
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Distribution des notes */}
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">Distribution des notes</h3>
+                  <div className="space-y-3">
+                    {ratingDistribution.reverse().map(({ rating, count }) => (
+                      <div key={rating} className="flex items-center gap-4">
+                        <span className="w-16 text-sm font-medium">{'⭐'.repeat(rating)}</span>
+                        <div className="flex-1 bg-gray-200 rounded-full h-6">
+                          <div 
+                            className="bg-yellow-500 h-6 rounded-full flex items-center justify-end pr-2"
+                            style={{ width: `${stats.ratedCount > 0 ? (count / stats.ratedCount) * 100 : 0}%` }}
+                          >
+                            {count > 0 && <span className="text-xs font-bold text-white">{count}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top 10 Rated */}
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">🏆 Top 10 - Mieux notés</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {topRated.map(([code, state], idx) => (
+                    <div key={code} className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-white rounded-lg border border-yellow-200">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl font-bold text-yellow-600">#{idx + 1}</span>
+                        <div>
+                          <div className="font-bold">{departmentInfo[code]?.name}</div>
+                          <div className="text-sm text-gray-600">{code}</div>
+                        </div>
+                      </div>
+                      <span className="text-2xl">{'⭐'.repeat(state.rating)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        function PlanningView({ plannedTrips, setPlannedTrips }) {
+          const [newTrip, setNewTrip] = useState({
+            name: '',
+            startDate: '',
+            endDate: '',
+            notes: ''
+          });
+
+          const addTrip = () => {
+            if (newTrip.name && newTrip.startDate) {
+              setPlannedTrips([...plannedTrips, { ...newTrip, id: Date.now() }]);
+              setNewTrip({ name: '', startDate: '', endDate: '', notes: '' });
+            }
+          };
+
+          const deleteTrip = (id) => {
+            if (confirm('Supprimer ce voyage ?')) {
+              setPlannedTrips(plannedTrips.filter(t => t.id !== id));
+            }
+          };
+
+          const upcomingTrips = plannedTrips
+            .filter(t => new Date(t.startDate) >= new Date())
+            .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+          const pastTrips = plannedTrips
+            .filter(t => new Date(t.startDate) < new Date())
+            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+
+          return (
+            <div className="space-y-8">
+              <h2 className="text-3xl font-bold text-gray-800">📅 Planning de voyages</h2>
+
+              {/* New Trip Form */}
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">➕ Planifier un nouveau voyage</h3>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Nom du voyage (ex: Week-end en Bretagne)"
+                    value={newTrip.name}
+                    onChange={(e) => setNewTrip({...newTrip, name: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
+                      <input
+                        type="date"
+                        value={newTrip.startDate}
+                        onChange={(e) => setNewTrip({...newTrip, startDate: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de fin (optionnel)</label>
+                      <input
+                        type="date"
+                        value={newTrip.endDate}
+                        onChange={(e) => setNewTrip({...newTrip, endDate: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <textarea
+                    placeholder="Notes, idées, budget estimé..."
+                    value={newTrip.notes}
+                    onChange={(e) => setNewTrip({...newTrip, notes: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    rows={3}
+                  />
+                  <button
+                    onClick={addTrip}
+                    className="w-full px-6 py-4 bg-green-500 text-white font-bold text-lg rounded-lg hover:bg-green-600 transition-colors"
+                  >
+                    ➕ Ajouter au planning
+                  </button>
+                </div>
+              </div>
+
+              {/* Upcoming Trips */}
+              {upcomingTrips.length > 0 && (
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">🎯 Voyages à venir ({upcomingTrips.length})</h3>
+                  <div className="space-y-4">
+                    {upcomingTrips.map(trip => (
+                      <TripCard key={trip.id} trip={trip} onDelete={deleteTrip} upcoming={true} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Past Trips */}
+              {pastTrips.length > 0 && (
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">📚 Voyages passés ({pastTrips.length})</h3>
+                  <div className="space-y-4">
+                    {pastTrips.map(trip => (
+                      <TripCard key={trip.id} trip={trip} onDelete={deleteTrip} upcoming={false} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {plannedTrips.length === 0 && (
+                <div className="bg-gray-50 rounded-lg p-12 text-center">
+                  <div className="text-6xl mb-4">🗺️</div>
+                  <p className="text-xl text-gray-600">Aucun voyage planifié pour le moment</p>
+                  <p className="text-gray-500 mt-2">Ajoutez votre premier voyage ci-dessus !</p>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        function TripCard({ trip, onDelete, upcoming }) {
+          const daysUntil = Math.ceil((new Date(trip.startDate) - new Date()) / (1000 * 60 * 60 * 24));
+          
+          return (
+            <div className={`p-4 rounded-lg border-2 ${
+              upcoming ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+            }`}>
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h4 className="font-bold text-lg">{trip.name}</h4>
+                    {upcoming && daysUntil <= 7 && (
+                      <span className="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                        Dans {daysUntil} jour{daysUntil > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mb-1">
+                    📅 {new Date(trip.startDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    {trip.endDate && ` → ${new Date(trip.endDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}
+                  </p>
+                  {trip.notes && (
+                    <p className="text-sm text-gray-700 mt-2 p-2 bg-white rounded">{trip.notes}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => onDelete(trip.id)}
+                  className="text-red-500 hover:text-red-700 text-2xl ml-4"
+                  title="Supprimer"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        function WishlistView({ appState }) {
+          const wishlistDepts = Object.entries(appState)
+            .filter(([_, state]) => state.wishlist && state.wishlist.length > 0)
+            .map(([code, state]) => ({ 
+              code, 
+              name: departmentInfo[code]?.name,
+              wishlist: state.wishlist,
+              rating: state.rating,
+              visited: state.visitLevel !== 'unvisited'
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+          const totalItems = wishlistDepts.reduce((sum, d) => sum + d.wishlist.length, 0);
+
+          return (
+            <div className="space-y-8">
+              <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-bold text-gray-800">⭐ Ma Wishlist</h2>
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-purple-600">{wishlistDepts.length}</div>
+                  <div className="text-sm text-gray-600">départements</div>
+                  <div className="text-xs text-gray-500">{totalItems} idées</div>
+                </div>
+              </div>
+
+              {wishlistDepts.length === 0 ? (
+                <div className="bg-gray-50 rounded-lg p-12 text-center">
+                  <div className="text-6xl mb-4">🎯</div>
+                  <p className="text-xl text-gray-600">Votre wishlist est vide</p>
+                  <p className="text-gray-500 mt-2">Ajoutez des idées de visites en cliquant sur un département !</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {wishlistDepts.map(({ code, name, wishlist, rating, visited }) => (
+                    <div key={code} className="bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition-shadow">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-bold text-lg text-purple-900">{name}</h3>
+                          <p className="text-sm text-gray-600">{code}</p>
+                        </div>
+                        <div className="text-right">
+                          {visited && (
+                            <span className="inline-block px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full mb-1">
+                              ✓ Visité
+                            </span>
+                          )}
+                          {rating > 0 && (
+                            <div className="text-xs">{'⭐'.repeat(rating)}</div>
+                          )}
+                        </div>
+                      </div>
+                      <ul className="space-y-2">
+                        {wishlist.map((item, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm">
+                            <span className="text-purple-500 mt-0.5">🎯</span>
+                            <span className="text-gray-700">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        function StatItem({ number, label, sublabel }) {
+          return (
+            <div className="text-center">
+              <div className="text-2xl md:text-3xl font-bold text-blue-600">{number}</div>
+              <div className="text-xs md:text-sm text-gray-600">{label}</div>
+              {sublabel && <div className="text-xs text-gray-500">{sublabel}</div>}
+            </div>
+          );
+        }
+
+        function StatCard({ title, value, subtitle }) {
+          return (
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-sm font-semibold text-gray-600 mb-2">{title}</h3>
+              <div className="text-3xl font-bold text-blue-600">{value}</div>
+              {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+            </div>
+          );
+        }
+
+        function DepartmentModal({ code, department, state, onClose, onUpdate }) {
+          const [visitLevel, setVisitLevel] = useState(state.visitLevel);
+          const [visitedCities, setVisitedCities] = useState(state.visitedCities);
+          const [customCities, setCustomCities] = useState(state.customCities);
+          const [notes, setNotes] = useState(state.notes);
+          const [newCity, setNewCity] = useState('');
+          const [rating, setRating] = useState(state.rating || 0);
+          const [wishlist, setWishlist] = useState(state.wishlist || []);
+          const [newWishlistItem, setNewWishlistItem] = useState('');
+
+          const toggleCity = (city) => {
+            setVisitedCities(prev =>
+              prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
+            );
+          };
+
+          const addCity = () => {
+            if (newCity.trim() && !customCities.includes(newCity.trim())) {
+              setCustomCities(prev => [...prev, newCity.trim()]);
+              setNewCity('');
+            }
+          };
+
+          const addWishlistItem = () => {
+            if (newWishlistItem.trim()) {
+              setWishlist(prev => [...prev, newWishlistItem.trim()]);
+              setNewWishlistItem('');
+            }
+          };
+
+          const removeWishlistItem = (idx) => {
+            setWishlist(prev => prev.filter((_, i) => i !== idx));
+          };
+
+          const handleSave = () => {
+            onUpdate({ 
+              visitLevel, 
+              visitedCities, 
+              customCities, 
+              notes,
+              rating,
+              wishlist
+            });
+            onClose();
+          };
+
+          const allCities = [...department.cities, ...customCities];
+
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={onClose}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-8" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white rounded-t-2xl z-10">
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    {department.name} ({code})
+                  </h2>
+                  <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-gray-600 text-3xl font-bold leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                  {/* Rating */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-3 text-lg">
+                      Note ⭐ {rating > 0 && <span className="text-yellow-500 font-bold">({rating}/5)</span>}
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="flex-1 relative h-16 bg-gradient-to-r from-gray-200 via-yellow-100 to-yellow-300 rounded-full overflow-hidden border-2 border-gray-300 shadow-inner"
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const percent = x / rect.width;
+                          const hoverRating = Math.ceil(percent * 5);
+                          e.currentTarget.dataset.hover = hoverRating;
+                        }}
+                        onMouseLeave={(e) => {
+                          delete e.currentTarget.dataset.hover;
+                        }}
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const percent = x / rect.width;
+                          const newRating = Math.ceil(percent * 5);
+                          setRating(newRating === rating ? 0 : newRating);
+                        }}
+                      >
+                        {/* Background stars */}
+                        <div className="absolute inset-0 flex justify-around items-center px-4">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <span key={star} className="text-3xl text-gray-400 opacity-30">⭐</span>
+                          ))}
+                        </div>
+                        
+                        {/* Active rating overlay */}
+                        <div 
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-yellow-400 to-yellow-500 flex justify-around items-center px-4 transition-all duration-200"
+                          style={{ width: `${(rating / 5) * 100}%` }}
+                        >
+                          {[1, 2, 3, 4, 5].map(star => (
+                            star <= rating && (
+                              <span key={star} className="text-3xl drop-shadow-lg animate-pulse">⭐</span>
+                            )
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {rating > 0 && (
+                        <button
+                          onClick={() => setRating(0)}
+                          className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 font-semibold transition-colors"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Cliquez sur la barre pour noter</p>
+                  </div>
+
+                  {/* Visit Level */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-3 text-lg">Niveau de visite</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(VISIT_LEVELS).map(([key, { label }]) => (
+                        <button
+                          key={key}
+                          onClick={() => setVisitLevel(key)}
+                          className={`p-3 rounded-lg border-2 font-medium transition-all ${
+                            visitLevel === key
+                              ? 'bg-blue-500 text-white border-blue-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cities */}
+                  <div>
+                    <h3 className="font-semibold text-gray-700 mb-3 text-lg">Villes visitées</h3>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {allCities.map(city => (
+                        <button
+                          key={city}
+                          onClick={() => toggleCity(city)}
+                          className={`px-4 py-2 rounded-full transition-all ${
+                            visitedCities.includes(city)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newCity}
+                        onChange={(e) => setNewCity(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addCity()}
+                        placeholder="Ajouter une ville..."
+                        className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={addCity}
+                        className="px-6 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Wishlist */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-3 text-lg">Wishlist - À faire 🎯</label>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={newWishlistItem}
+                        onChange={(e) => setNewWishlistItem(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addWishlistItem()}
+                        placeholder="Ex: Visiter le château de..."
+                        className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={addWishlistItem}
+                        className="px-6 py-2 bg-purple-500 text-white font-semibold rounded-lg hover:bg-purple-600"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {wishlist.length > 0 && (
+                      <ul className="space-y-2">
+                        {wishlist.map((item, idx) => (
+                          <li key={idx} className="flex justify-between items-center bg-purple-50 px-4 py-3 rounded-lg">
+                            <span className="flex items-center gap-2">
+                              <span className="text-purple-500">🎯</span>
+                              {item}
+                            </span>
+                            <button 
+                              onClick={() => removeWishlistItem(idx)} 
+                              className="text-red-500 hover:text-red-700 text-xl"
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-3 text-lg">Notes de voyage 📝</label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Ajoutez vos souvenirs, anecdotes, recommandations..."
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                      rows={5}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSave}
+                    className="w-full py-4 bg-blue-500 text-white font-bold text-lg rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    💾 Enregistrer
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        ReactDOM.render(<FranceMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
