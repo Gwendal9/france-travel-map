@@ -2,6 +2,32 @@
 
 Application web interactive pour suivre et planifier vos voyages à travers la France. Notez vos visites, planifiez vos futurs trips, et suivez votre progression département par département.
 
+## 🚀 Tester l'application
+
+### Option 1 : Accès direct via GitHub Pages (Recommandé)
+
+**👉 [Ouvrir l'application](https://gwendal9.github.io/france-travel-map/)**
+
+### Option 2 : En local
+
+```bash
+# Cloner le repo
+git clone https://github.com/Gwendal9/france-travel-map.git
+cd france-travel-map
+
+# Ouvrir index.html dans votre navigateur
+# Sur Mac:
+open index.html
+
+# Sur Linux:
+xdg-open index.html
+
+# Sur Windows:
+start index.html
+```
+
+**Note** : Aucune installation ou compilation nécessaire ! L'application fonctionne directement dans le navigateur.
+
 ## 📋 Table des matières
 
 - [Aperçu](#aperçu)
@@ -56,7 +82,7 @@ Application web interactive pour suivre et planifier vos voyages à travers la F
 ### Format du projet
 
 **Application single-page HTML standalone**
-- Fichier unique : `france-map-enhanced.html`
+- Fichier unique : `index.html`
 - Aucun build process requis
 - Ouvrir directement dans un navigateur
 
@@ -72,7 +98,7 @@ Application web interactive pour suivre et planifier vos voyages à travers la F
 ## 📁 Structure du projet
 
 ```
-france-map-enhanced.html
+index.html
 ├── <head>
 │   ├── React 18 (CDN)
 │   ├── ReactDOM 18 (CDN)
@@ -312,7 +338,7 @@ const REGIONS = {
 
 ### Développement local
 
-1. Ouvrir `france-map-enhanced.html` dans un navigateur
+1. Ouvrir `index.html` dans un navigateur
 2. Modifier le code
 3. Rafraîchir la page (F5)
 4. Les données localStorage persistent entre les rechargements
@@ -479,18 +505,29 @@ fetch('https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/dep
 
 ## 🎨 Personnalisation
 
-### Couleurs des niveaux de visite
+### Couleurs des régions
 
 ```javascript
-const VISIT_LEVELS = {
-  unvisited: { label: 'Non visité', color: '#4a4a4a' },
-  'one-night': { label: 'Une nuit', color: '#a8d5e2' },
-  'one-week': { label: 'Une semaine', color: '#5ca9c9' },
-  regular: { label: 'Régulièrement', color: '#2171b5' }
+const REGION_COLORS = {
+  'Auvergne-Rhône-Alpes': { r: 52, g: 152, b: 219 },      // Bleu
+  'Bourgogne-Franche-Comté': { r: 155, g: 89, b: 182 },   // Violet
+  'Bretagne': { r: 46, g: 204, b: 113 },                  // Vert
+  'Centre-Val de Loire': { r: 241, g: 196, b: 15 },       // Jaune
+  'Corse': { r: 230, g: 126, b: 34 },                     // Orange
+  'Grand Est': { r: 231, g: 76, b: 60 },                  // Rouge
+  'Hauts-de-France': { r: 52, g: 73, b: 94 },             // Bleu foncé
+  'Île-de-France': { r: 149, g: 165, b: 166 },            // Gris
+  'Normandie': { r: 26, g: 188, b: 156 },                 // Turquoise
+  'Nouvelle-Aquitaine': { r: 142, g: 68, b: 173 },        // Pourpre
+  'Occitanie': { r: 243, g: 156, b: 18 },                 // Orange doré
+  'Pays de la Loire': { r: 22, g: 160, b: 133 },          // Vert sarcelle
+  'Provence-Alpes-Côte d\'Azur': { r: 211, g: 84, b: 0 }  // Orange brûlé
 };
 ```
 
-**Modifier** : Changer les valeurs `color` (hex)
+**Modifier** : Changer les valeurs RGB pour personnaliser les couleurs de chaque région.
+
+**Note** : L'intensité de la couleur est automatiquement calculée en fonction du pourcentage de villes visitées dans chaque département.
 
 ### Villes par défaut
 
@@ -687,7 +724,7 @@ localStorage.setItem('key', JSON.stringify(data));
 **Contexte à fournir** :
 ```
 Projet : Carte interactive de France (React standalone)
-Fichier : france-map-enhanced.html
+Fichier : index.html
 Tech : React 18 CDN, Tailwind CSS, GeoJSON
 ```
 
@@ -759,7 +796,15 @@ Projet personnel - Utilisation libre
 
 ## 🎉 Changelog
 
-### v2.0 (Actuelle)
+### v2.1 (Actuelle)
+- ✨ **Coloration par région** : Chaque département est coloré selon sa région (13 couleurs distinctes)
+- ✨ **Intensité dynamique** : La couleur devient plus vive en fonction du % de villes visitées (0% = très pâle, 100% = couleur pleine)
+- ✨ **Coordonnées GPS réelles** : Plus de 100 villes principales positionnées à leurs vraies coordonnées géographiques
+- 🎨 Légende améliorée avec explication du système de coloration par région
+- 🎨 Tooltips enrichis affichant le pourcentage de villes visitées
+- 📍 Marqueurs de villes plus précis et visibles
+
+### v2.0
 - ✨ Système de notation avec barre interactive
 - ✨ Wishlist par département
 - ✨ Planning de voyages
