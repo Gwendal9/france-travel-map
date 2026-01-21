@@ -39,13 +39,7 @@
         /* City markers with glow */
         .city-marker {
             filter: drop-shadow(0 0 3px rgba(231, 76, 60, 0.6));
-            animation: pulse 2s ease-in-out infinite;
             cursor: pointer;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.8; transform: scale(1.1); }
         }
         
         /* Rating bar */
@@ -970,59 +964,19 @@
                   {/* Rating */}
                   <div>
                     <label className="block font-semibold text-gray-700 mb-3 text-lg">
-                      Note ⭐ {rating > 0 && <span className="text-yellow-500 font-bold">({rating}/5)</span>}
+                      Note {rating > 0 && <span className="text-gray-600">({rating}/5)</span>}
                     </label>
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="flex-1 relative h-16 bg-gradient-to-r from-gray-200 via-yellow-100 to-yellow-300 rounded-full overflow-hidden border-2 border-gray-300 shadow-inner"
-                        onMouseMove={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const x = e.clientX - rect.left;
-                          const percent = x / rect.width;
-                          const hoverRating = Math.ceil(percent * 5);
-                          e.currentTarget.dataset.hover = hoverRating;
-                        }}
-                        onMouseLeave={(e) => {
-                          delete e.currentTarget.dataset.hover;
-                        }}
-                        onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const x = e.clientX - rect.left;
-                          const percent = x / rect.width;
-                          const newRating = Math.ceil(percent * 5);
-                          setRating(newRating === rating ? 0 : newRating);
-                        }}
-                      >
-                        {/* Background stars */}
-                        <div className="absolute inset-0 flex justify-around items-center px-4">
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <span key={star} className="text-3xl text-gray-400 opacity-30">⭐</span>
-                          ))}
-                        </div>
-                        
-                        {/* Active rating overlay */}
-                        <div 
-                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-yellow-400 to-yellow-500 flex justify-around items-center px-4 transition-all duration-200"
-                          style={{ width: `${(rating / 5) * 100}%` }}
-                        >
-                          {[1, 2, 3, 4, 5].map(star => (
-                            star <= rating && (
-                              <span key={star} className="text-3xl drop-shadow-lg animate-pulse">⭐</span>
-                            )
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {rating > 0 && (
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map(star => (
                         <button
-                          onClick={() => setRating(0)}
-                          className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 font-semibold transition-colors"
+                          key={star}
+                          onClick={() => setRating(star === rating ? 0 : star)}
+                          className="text-4xl transition-all hover:scale-110"
                         >
-                          ✕
+                          {star <= rating ? '⭐' : '☆'}
                         </button>
-                      )}
+                      ))}
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">Cliquez sur la barre pour noter</p>
                   </div>
 
                   {/* Visit Level */}
