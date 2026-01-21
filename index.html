@@ -404,11 +404,6 @@
             return initialState;
           });
 
-          const [plannedTrips, setPlannedTrips] = useState(() => {
-            const saved = localStorage.getItem('franceMapPlannedTrips');
-            return saved ? JSON.parse(saved) : [];
-          });
-
           const [modalOpen, setModalOpen] = useState(false);
           const [currentDepartment, setCurrentDepartment] = useState(null);
           const [activeTab, setActiveTab] = useState('map');
@@ -429,10 +424,6 @@
           useEffect(() => {
             localStorage.setItem('franceMapStateV2', JSON.stringify(appState));
           }, [appState]);
-
-          useEffect(() => {
-            localStorage.setItem('franceMapPlannedTrips', JSON.stringify(plannedTrips));
-          }, [plannedTrips]);
 
           const openModal = (code) => {
             setCurrentDepartment(code);
@@ -548,9 +539,6 @@
                     <TabButton active={activeTab === 'stats'} onClick={() => setActiveTab('stats')}>
                       📊 Statistiques
                     </TabButton>
-                    <TabButton active={activeTab === 'planning'} onClick={() => setActiveTab('planning')}>
-                      📅 Planning
-                    </TabButton>
                   </div>
                 </div>
               </div>
@@ -570,13 +558,6 @@
 
                   {activeTab === 'stats' && (
                     <StatsView appState={appState} stats={stats} />
-                  )}
-
-                  {activeTab === 'planning' && (
-                    <PlanningView
-                      plannedTrips={plannedTrips}
-                      setPlannedTrips={setPlannedTrips}
-                    />
                   )}
                 </div>
               </div>
@@ -916,158 +897,6 @@
           );
         }
 
-        function PlanningView({ plannedTrips, setPlannedTrips }) {
-          const [newTrip, setNewTrip] = useState({
-            name: '',
-            startDate: '',
-            endDate: '',
-            notes: ''
-          });
-
-          const addTrip = () => {
-            if (newTrip.name && newTrip.startDate) {
-              setPlannedTrips([...plannedTrips, { ...newTrip, id: Date.now() }]);
-              setNewTrip({ name: '', startDate: '', endDate: '', notes: '' });
-            }
-          };
-
-          const deleteTrip = (id) => {
-            if (confirm('Supprimer ce voyage ?')) {
-              setPlannedTrips(plannedTrips.filter(t => t.id !== id));
-            }
-          };
-
-          const upcomingTrips = plannedTrips
-            .filter(t => new Date(t.startDate) >= new Date())
-            .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-
-          const pastTrips = plannedTrips
-            .filter(t => new Date(t.startDate) < new Date())
-            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-
-          return (
-            <div className="space-y-8">
-              <h2 className="text-3xl font-bold text-gray-800">📅 Planning de voyages</h2>
-
-              {/* New Trip Form */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">➕ Planifier un nouveau voyage</h3>
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    placeholder="Nom du voyage (ex: Week-end en Bretagne)"
-                    value={newTrip.name}
-                    onChange={(e) => setNewTrip({...newTrip, name: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
-                      <input
-                        type="date"
-                        value={newTrip.startDate}
-                        onChange={(e) => setNewTrip({...newTrip, startDate: e.target.value})}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de fin (optionnel)</label>
-                      <input
-                        type="date"
-                        value={newTrip.endDate}
-                        onChange={(e) => setNewTrip({...newTrip, endDate: e.target.value})}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                  <textarea
-                    placeholder="Notes, idées, budget estimé..."
-                    value={newTrip.notes}
-                    onChange={(e) => setNewTrip({...newTrip, notes: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                    rows={3}
-                  />
-                  <button
-                    onClick={addTrip}
-                    className="w-full px-6 py-4 bg-green-500 text-white font-bold text-lg rounded-lg hover:bg-green-600 transition-colors"
-                  >
-                    ➕ Ajouter au planning
-                  </button>
-                </div>
-              </div>
-
-              {/* Upcoming Trips */}
-              {upcomingTrips.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">🎯 Voyages à venir ({upcomingTrips.length})</h3>
-                  <div className="space-y-4">
-                    {upcomingTrips.map(trip => (
-                      <TripCard key={trip.id} trip={trip} onDelete={deleteTrip} upcoming={true} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Past Trips */}
-              {pastTrips.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">📚 Voyages passés ({pastTrips.length})</h3>
-                  <div className="space-y-4">
-                    {pastTrips.map(trip => (
-                      <TripCard key={trip.id} trip={trip} onDelete={deleteTrip} upcoming={false} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {plannedTrips.length === 0 && (
-                <div className="bg-gray-50 rounded-lg p-12 text-center">
-                  <div className="text-6xl mb-4">🗺️</div>
-                  <p className="text-xl text-gray-600">Aucun voyage planifié pour le moment</p>
-                  <p className="text-gray-500 mt-2">Ajoutez votre premier voyage ci-dessus !</p>
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        function TripCard({ trip, onDelete, upcoming }) {
-          const daysUntil = Math.ceil((new Date(trip.startDate) - new Date()) / (1000 * 60 * 60 * 24));
-          
-          return (
-            <div className={`p-4 rounded-lg border-2 ${
-              upcoming ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-            }`}>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h4 className="font-bold text-lg">{trip.name}</h4>
-                    {upcoming && daysUntil <= 7 && (
-                      <span className="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
-                        Dans {daysUntil} jour{daysUntil > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-1">
-                    📅 {new Date(trip.startDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    {trip.endDate && ` → ${new Date(trip.endDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}
-                  </p>
-                  {trip.notes && (
-                    <p className="text-sm text-gray-700 mt-2 p-2 bg-white rounded">{trip.notes}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => onDelete(trip.id)}
-                  className="text-red-500 hover:text-red-700 text-2xl ml-4"
-                  title="Supprimer"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          );
-        }
-
         function StatItem({ number, label, sublabel }) {
           return (
             <div className="text-center">
@@ -1224,13 +1053,14 @@
                         <button
                           key={city}
                           onClick={() => toggleCity(city)}
-                          className={`px-4 py-2 rounded-full transition-all ${
+                          className={`px-4 py-2 rounded-full transition-all flex items-center gap-2 ${
                             visitedCities.includes(city)
                               ? 'bg-blue-500 text-white'
                               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                           }`}
                         >
-                          {city}
+                          {visitedCities.includes(city) && <span className="font-bold">✓</span>}
+                          <span>{city}</span>
                         </button>
                       ))}
                     </div>
