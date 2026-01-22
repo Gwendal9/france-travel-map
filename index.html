@@ -659,11 +659,21 @@
         }
 
         function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats, currentDepartment, mapZoom, setMapZoom, mapPan, setMapPan }) {
-          const handleWheel = (e) => {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            setMapZoom(prev => Math.max(1, Math.min(5, prev * delta)));
-          };
+          const svgRef = React.useRef(null);
+
+          React.useEffect(() => {
+            const svg = svgRef.current;
+            if (!svg) return;
+
+            const handleWheel = (e) => {
+              e.preventDefault();
+              const delta = e.deltaY > 0 ? 0.9 : 1.1;
+              setMapZoom(prev => Math.max(1, Math.min(5, prev * delta)));
+            };
+
+            svg.addEventListener('wheel', handleWheel, { passive: false });
+            return () => svg.removeEventListener('wheel', handleWheel);
+          }, [setMapZoom]);
 
           const handleReset = () => {
             setMapZoom(1);
@@ -701,10 +711,10 @@
                   </div>
                 )}
                 <svg
+                  ref={svgRef}
                   viewBox="0 0 1000 1100"
                   className="w-full h-auto"
-                  style={{ minHeight: '600px' }}
-                  onWheel={handleWheel}
+                  style={{ minHeight: '600px', cursor: mapZoom > 1 ? 'grab' : 'default' }}
                 >
                   <defs>
                     {/* Gradient for water/ocean effect */}
@@ -1084,51 +1094,84 @@
                   </div>
 
                   <div className="flex-1 bg-gray-50 rounded-lg p-4">
-                    <svg viewBox="0 0 1000 1100" className="w-full h-full">
-                      {/* Department shape - using zoomed bounds */}
-                      {(() => {
-                        const path = convertToSVGPath(departmentFeature.geometry.coordinates, zoomedBounds);
-                        return (
+                    {(() => {
+                      // Calculate SVG coordinates of the department
+                      const projectPoint = ([lon, lat]) => {
+                        const x = ((lon - zoomedBounds.minLon) / (zoomedBounds.maxLon - zoomedBounds.minLon)) * 1000;
+                        const y = ((zoomedBounds.maxLat - lat) / (zoomedBounds.maxLat - zoomedBounds.minLat)) * 1100;
+                        return [x, y];
+                      };
+
+                      // Get all coordinates to find SVG bounding box
+                      let minX = Infinity, maxX = -Infinity;
+                      let minY = Infinity, maxY = -Infinity;
+
+                      const processCoords = (coords) => {
+                        if (Array.isArray(coords[0])) {
+                          coords.forEach(processCoords);
+                        } else {
+                          const [x, y] = projectPoint(coords);
+                          minX = Math.min(minX, x);
+                          maxX = Math.max(maxX, x);
+                          minY = Math.min(minY, y);
+                          maxY = Math.max(maxY, y);
+                        }
+                      };
+
+                      processCoords(departmentFeature.geometry.coordinates);
+
+                      // Add padding
+                      const padding = 50;
+                      const viewBoxX = minX - padding;
+                      const viewBoxY = minY - padding;
+                      const viewBoxWidth = (maxX - minX) + (padding * 2);
+                      const viewBoxHeight = (maxY - minY) + (padding * 2);
+                      const viewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
+
+                      const path = convertToSVGPath(departmentFeature.geometry.coordinates, zoomedBounds);
+
+                      return (
+                        <svg viewBox={viewBox} className="w-full h-full">
+                          {/* Department shape */}
                           <path
                             d={path}
                             fill={getDepartmentColor(code, state)}
                             stroke="#333"
                             strokeWidth="4"
                           />
-                        );
-                      })()}
 
-                      {/* City markers - using zoomed bounds */}
-                      {visitedCities.map(city => {
-                        if (!CITY_COORDINATES[city]) return null;
-                        const [lon, lat] = CITY_COORDINATES[city];
-                        const cityX = ((lon - zoomedBounds.minLon) / (zoomedBounds.maxLon - zoomedBounds.minLon)) * 1000;
-                        const cityY = ((zoomedBounds.maxLat - lat) / (zoomedBounds.maxLat - zoomedBounds.minLat)) * 1100;
+                          {/* City markers */}
+                          {visitedCities.map(city => {
+                            if (!CITY_COORDINATES[city]) return null;
+                            const [lon, lat] = CITY_COORDINATES[city];
+                            const [cityX, cityY] = projectPoint([lon, lat]);
 
-                        return (
-                          <g key={city}>
-                            <circle
-                              cx={cityX}
-                              cy={cityY}
-                              r="18"
-                              fill="#e74c3c"
-                              stroke="#fff"
-                              strokeWidth="4"
-                            />
-                            <text
-                              x={cityX}
-                              y={cityY + 35}
-                              textAnchor="middle"
-                              fontSize="18"
-                              fontWeight="bold"
-                              className="fill-gray-800"
-                            >
-                              {city}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
+                            return (
+                              <g key={city}>
+                                <circle
+                                  cx={cityX}
+                                  cy={cityY}
+                                  r="18"
+                                  fill="#e74c3c"
+                                  stroke="#fff"
+                                  strokeWidth="4"
+                                />
+                                <text
+                                  x={cityX}
+                                  y={cityY + 35}
+                                  textAnchor="middle"
+                                  fontSize="18"
+                                  fontWeight="bold"
+                                  className="fill-gray-800"
+                                >
+                                  {city}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      );
+                    })()}
                   </div>
                 </div>
 
