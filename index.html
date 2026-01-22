@@ -46,9 +46,56 @@
         .rating-bar {
             cursor: pointer;
         }
-        
+
         .rating-bar:hover {
             transform: scaleY(1.05);
+        }
+
+        /* Department detail overlay */
+        .department-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .map-blurred {
+            filter: blur(8px);
+            pointer-events: none;
+        }
+
+        .department-detail-container {
+            display: flex;
+            gap: 2rem;
+            max-width: 1400px;
+            width: 100%;
+            height: 80vh;
+            max-height: 800px;
+        }
+
+        .department-large-map {
+            flex: 1;
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .department-info-panel {
+            width: 400px;
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
         }
         
         @keyframes shimmer {
@@ -110,7 +157,15 @@
 
           // Corse
           'Ajaccio': [8.7369, 41.9267],
+          'Porto-Vecchio': [9.2789, 41.5914],
+          'Propriano': [8.9042, 41.6767],
+          'Sartène': [8.9728, 41.6222],
+          'Bonifacio': [9.1594, 41.3874],
           'Bastia': [9.4500, 42.7028],
+          'Corte': [9.1500, 42.3067],
+          'Calvi': [8.7561, 42.5678],
+          'L\'Île-Rousse': [8.9378, 42.6378],
+          'Biguglia': [9.4328, 42.6106],
 
           // Grand Est
           'Charleville-Mézières': [4.7197, 49.7722],
@@ -540,13 +595,14 @@
               <div className="p-4 md:p-8">
                 <div className="max-w-[1600px] mx-auto">
                   {activeTab === 'map' && (
-                    <MapView 
+                    <MapView
                       geoData={geoData}
                       bounds={bounds}
                       appState={appState}
                       convertToSVGPath={convertToSVGPath}
                       openModal={openModal}
                       stats={stats}
+                      currentDepartment={currentDepartment}
                     />
                   )}
 
@@ -557,7 +613,7 @@
               </div>
 
               {modalOpen && currentDepartment && (
-                <DepartmentModal
+                <DepartmentOverlay
                   code={currentDepartment}
                   department={departmentInfo[currentDepartment]}
                   state={appState[currentDepartment]}
@@ -588,7 +644,7 @@
           );
         }
 
-        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats }) {
+        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats, currentDepartment }) {
           return (
             <>
               <header className="text-center mb-8">
@@ -607,7 +663,7 @@
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-4 md:p-8 mb-8 map-container">
+              <div className={`bg-white rounded-lg shadow-md p-4 md:p-8 mb-8 map-container ${currentDepartment ? 'map-blurred' : ''}`}>
                 <svg viewBox="0 0 1000 1100" className="w-full h-auto" style={{ minHeight: '600px' }}>
                   <defs>
                     {/* Gradient for water/ocean effect */}
@@ -911,6 +967,174 @@
               <h3 className="text-sm font-semibold text-gray-600 mb-2">{title}</h3>
               <div className="text-3xl font-bold text-blue-600">{value}</div>
               {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+            </div>
+          );
+        }
+
+        function DepartmentOverlay({ code, department, state, onClose, onUpdate, geoData, bounds, convertToSVGPath, getDepartmentColor }) {
+          const [visitLevel, setVisitLevel] = useState(state.visitLevel);
+          const [visitedCities, setVisitedCities] = useState(state.visitedCities);
+          const [customCities, setCustomCities] = useState(state.customCities);
+          const [notes, setNotes] = useState(state.notes);
+          const [newCity, setNewCity] = useState('');
+          const [rating, setRating] = useState(state.rating || 0);
+
+          const toggleCity = (city) => {
+            setVisitedCities(prev =>
+              prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
+            );
+          };
+
+          const addCity = () => {
+            if (newCity.trim() && !customCities.includes(newCity.trim())) {
+              setCustomCities(prev => [...prev, newCity.trim()]);
+              setNewCity('');
+            }
+          };
+
+          const handleSave = () => {
+            onUpdate({
+              visitLevel,
+              visitedCities,
+              customCities,
+              notes,
+              rating
+            });
+            onClose();
+          };
+
+          const allCities = [...department.cities, ...customCities];
+
+          // Get department bounding box for zoomed view
+          const departmentFeature = geoData.features.find(f => f.properties.code === code);
+          if (!departmentFeature) return null;
+
+          return (
+            <div className="department-overlay" onClick={onClose}>
+              <div className="department-detail-container" onClick={(e) => e.stopPropagation()}>
+                {/* Left: Enlarged Department Map */}
+                <div className="department-large-map">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-3xl font-bold text-gray-800">
+                      {department.name} ({code})
+                    </h2>
+                    <button
+                      onClick={onClose}
+                      className="text-gray-400 hover:text-gray-600 text-4xl font-bold leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="flex-1 bg-gray-50 rounded-lg p-4">
+                    <svg viewBox="0 0 1000 1100" className="w-full h-full">
+                      {/* Department shape */}
+                      {(() => {
+                        const path = convertToSVGPath(departmentFeature.geometry.coordinates, bounds);
+                        return (
+                          <path
+                            d={path}
+                            fill={getDepartmentColor(code, state)}
+                            stroke="#333"
+                            strokeWidth="4"
+                          />
+                        );
+                      })()}
+
+                      {/* City markers */}
+                      {visitedCities.map(city => {
+                        if (!CITY_COORDINATES[city]) return null;
+                        const [lon, lat] = CITY_COORDINATES[city];
+                        const cityX = ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
+                        const cityY = ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 1100;
+
+                        return (
+                          <g key={city}>
+                            <circle
+                              cx={cityX}
+                              cy={cityY}
+                              r="12"
+                              fill="#e74c3c"
+                              stroke="#fff"
+                              strokeWidth="4"
+                            />
+                            <text
+                              x={cityX}
+                              y={cityY + 25}
+                              textAnchor="middle"
+                              className="text-sm font-semibold fill-gray-800"
+                            >
+                              {city}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Right: Info Panel */}
+                <div className="department-info-panel">
+                  {/* Rating */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2 text-lg">
+                      Note {rating > 0 && <span className="text-gray-600">({rating}/5)</span>}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          onClick={() => setRating(star === rating ? 0 : star)}
+                          className="text-4xl transition-all hover:scale-110"
+                        >
+                          {star <= rating ? '⭐' : '☆'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cities */}
+                  <div>
+                    <h3 className="font-semibold text-gray-700 mb-2 text-lg">Villes visitées</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {allCities.map(city => (
+                        <button
+                          key={city}
+                          onClick={() => toggleCity(city)}
+                          className={`px-3 py-1.5 rounded-full text-sm transition-all flex items-center gap-1.5 ${
+                            visitedCities.includes(city)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                        >
+                          {visitedCities.includes(city) && <span className="font-bold">✓</span>}
+                          <span>{city}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2 text-lg">Notes 📝</label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Vos souvenirs..."
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none text-sm"
+                      rows={4}
+                    />
+                  </div>
+
+                  {/* Save Button */}
+                  <button
+                    onClick={handleSave}
+                    className="w-full py-3 bg-blue-500 text-white font-bold text-lg rounded-lg hover:bg-blue-600 transition-colors mt-auto"
+                  >
+                    💾 Enregistrer
+                  </button>
+                </div>
+              </div>
             </div>
           );
         }
