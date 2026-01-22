@@ -69,14 +69,14 @@
         }
 
         .department-map-full {
-            width: 95%;
-            height: 95%;
-            max-width: 1400px;
-            max-height: 900px;
+            width: 98%;
+            height: 98%;
+            max-width: 1800px;
+            max-height: 1000px;
             background: white;
             border-radius: 2rem;
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
-            padding: 3rem;
+            padding: 2rem;
             display: flex;
             flex-direction: column;
             animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -283,9 +283,9 @@
         };
 
         const departmentInfo = {
-          '01': { name: 'Ain', cities: ['Bourg-en-Bresse', 'Oyonnax', 'Belley', 'Gex', 'Nantua', 'Ambérieu-en-Bugey', 'Miribel', 'Ferney-Voltaire', 'Divonne-les-Bains', 'Trévoux'] },
-          '02': { name: 'Aisne', cities: ['Laon', 'Saint-Quentin', 'Soissons', 'Château-Thierry', 'Vervins'] },
-          '03': { name: 'Allier', cities: ['Moulins', 'Vichy', 'Montluçon', 'Cusset', 'Yzeure'] },
+          '01': { name: 'Ain', cities: ['Bourg-en-Bresse', 'Oyonnax', 'Ambérieu-en-Bugey', 'Belley', 'Miribel', 'Ferney-Voltaire', 'Gex', 'Divonne-les-Bains', 'Trévoux', 'Nantua'] },
+          '02': { name: 'Aisne', cities: ['Saint-Quentin', 'Laon', 'Soissons', 'Château-Thierry', 'Tergnier', 'Chauny', 'Hirson', 'Villers-Cotterêts', 'Bohain-en-Vermandois', 'Vervins'] },
+          '03': { name: 'Allier', cities: ['Montluçon', 'Vichy', 'Moulins', 'Yzeure', 'Cusset', 'Domérat', 'Bellerive-sur-Allier', 'Commentry', 'Désertines', 'Gannat'] },
           '04': { name: 'Alpes-de-Haute-Provence', cities: ['Digne-les-Bains', 'Manosque', 'Sisteron', 'Barcelonnette', 'Castellane'] },
           '05': { name: 'Hautes-Alpes', cities: ['Gap', 'Briançon', 'Embrun', 'L\'Argentière-la-Bessée', 'Tallard'] },
           '06': { name: 'Alpes-Maritimes', cities: ['Nice', 'Cannes', 'Antibes', 'Grasse', 'Menton'] },
@@ -428,27 +428,31 @@
           return null;
         };
 
-        // Helper function to calculate color based on visit percentage
+        // Helper function to calculate color with opacity based on visit percentage
         const getDepartmentColor = (code, state) => {
           const region = getDepartmentRegion(code);
           if (!region || !REGION_COLORS[region]) {
-            return '#cccccc'; // Fallback color
+            return 'rgba(204, 204, 204, 0.3)'; // Fallback color with transparency
           }
 
           const baseColor = REGION_COLORS[region];
-          const totalCities = (departmentInfo[code]?.cities?.length || 5) + (state?.customCities?.length || 0);
-          const visitedCount = state?.visitedCities?.length || 0;
-          const visitPercent = totalCities > 0 ? visitedCount / totalCities : 0;
+
+          // Calculate visit percentage (cities with level > 'never')
+          const cityVisits = state?.cityVisits || {};
+          const visitedCities = Object.values(cityVisits).filter(level => level !== 'never').length;
+          const totalCities = departmentInfo[code]?.cities?.length || 5;
+          const visitPercent = totalCities > 0 ? visitedCities / totalCities : 0;
+
+          // Opacity: 0.3 (transparent) when 0% visited, 1.0 (opaque) when 100% visited
+          const opacity = 0.3 + (visitPercent * 0.7);
 
           // Gradually increase intensity from 0% to 100% visited
-          // At 0% visited: light but visible (70% lightness) - couleur terne mais visible
-          // At 100% visited: full color intensity (0% lightness) - couleur pleine et vive
           const lightness = 0.7 * (1 - visitPercent);
           const r = Math.round(baseColor.r + (255 - baseColor.r) * lightness);
           const g = Math.round(baseColor.g + (255 - baseColor.g) * lightness);
           const b = Math.round(baseColor.b + (255 - baseColor.b) * lightness);
 
-          return `rgb(${r}, ${g}, ${b})`;
+          return `rgba(${r}, ${g}, ${b}, ${opacity})`;
         };
 
         function FranceMap() {
