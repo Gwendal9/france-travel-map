@@ -9,31 +9,28 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Map textures and styling */
+        /* Map styling - clean and modern */
         .map-container {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
             position: relative;
         }
         
-        .map-container::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: 
-                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
-                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-            pointer-events: none;
-            border-radius: inherit;
-        }
-        
         .department-path {
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-            transition: all 0.2s ease;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             cursor: pointer;
+            stroke-width: 2;
         }
-        
+
         .department-path:hover {
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)) brightness(1.1);
+            filter: drop-shadow(0 8px 16px rgba(0,0,0,0.25)) brightness(1.15);
+            transform: scale(1.02);
+            stroke-width: 3;
+            z-index: 10;
+        }
+
+        .department-path:active {
+            transform: scale(0.98);
         }
         
         /* City markers with glow */
@@ -51,50 +48,56 @@
             transform: scaleY(1.05);
         }
 
-        /* Department detail overlay */
+        /* Department detail overlay - simplified */
         .department-overlay {
             position: fixed;
             inset: 0;
             z-index: 100;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 2rem;
+            animation: fadeIn 0.3s ease;
         }
 
-        .department-view-container {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .department-map-full {
-            width: 90%;
-            height: 90%;
+            width: 95%;
+            height: 95%;
+            max-width: 1400px;
+            max-height: 900px;
             background: white;
-            border-radius: 1.5rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
-            padding: 2rem;
+            border-radius: 2rem;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+            padding: 3rem;
             display: flex;
             flex-direction: column;
+            animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .department-info-floating {
-            position: absolute;
-            bottom: 2rem;
-            right: 2rem;
-            width: 350px;
-            max-height: 70vh;
-            background: white;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            overflow-y: auto;
-            z-index: 101;
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .city-label {
+            font-size: 16px;
+            font-weight: 600;
+            fill: #1f2937;
+            text-shadow: 0 0 3px white, 0 0 6px white;
+            pointer-events: none;
         }
         
         @keyframes shimmer {
@@ -435,18 +438,12 @@
         function FranceMap() {
           const [geoData, setGeoData] = useState(null);
           const [loading, setLoading] = useState(true);
-          const [appState, setAppState] = useState(() => {
-            const saved = localStorage.getItem('franceMapStateV2');
-            if (saved) return JSON.parse(saved);
-
+          const [appState] = useState(() => {
+            // Simplified state - just for color display
             const initialState = {};
             Object.keys(departmentInfo).forEach(code => {
               initialState[code] = {
-                visitLevel: 'unvisited',
-                visitedCities: [],
-                customCities: [],
-                notes: '',
-                rating: 0
+                // Empty state, just for getDepartmentColor to work
               };
             });
             return initialState;
@@ -471,10 +468,6 @@
               });
           }, []);
 
-          useEffect(() => {
-            localStorage.setItem('franceMapStateV2', JSON.stringify(appState));
-          }, [appState]);
-
           const openModal = (code) => {
             setCurrentDepartment(code);
             setModalOpen(true);
@@ -485,24 +478,7 @@
             setCurrentDepartment(null);
           };
 
-          const updateDepartment = (code, updates) => {
-            setAppState(prev => ({
-              ...prev,
-              [code]: { ...prev[code], ...updates }
-            }));
-          };
-
-          const stats = {
-            totalVisited: Object.values(appState).filter(s => s.visitLevel !== 'unvisited').length,
-            percentVisited: Math.round((Object.values(appState).filter(s => s.visitLevel !== 'unvisited').length / 96) * 100),
-            regularCount: Object.values(appState).filter(s => s.visitLevel === 'regular').length,
-            citiesCount: Object.values(appState).reduce((sum, s) => sum + s.visitedCities.length, 0),
-            avgRating: (Object.values(appState).filter(s => s.rating > 0).reduce((sum, s) => sum + s.rating, 0) / Object.values(appState).filter(s => s.rating > 0).length || 0).toFixed(1),
-            regionsCompleted: Object.entries(REGIONS).filter(([region, depts]) =>
-              depts.every(code => appState[code]?.visitLevel !== 'unvisited')
-            ).length,
-            ratedCount: Object.values(appState).filter(s => s.rating > 0).length
-          };
+          // No stats needed for simplified version
 
           const convertToSVGPath = (coordinates, bounds) => {
             const paths = [];
@@ -586,40 +562,21 @@
           const bounds = getBounds();
 
           return (
-            <div className="min-h-screen bg-gray-50">
-              <div className="bg-white shadow-md sticky top-0 z-40">
-                <div className="max-w-[1600px] mx-auto px-4">
-                  <div className="flex gap-1 overflow-x-auto">
-                    <TabButton active={activeTab === 'map'} onClick={() => setActiveTab('map')}>
-                      🗺️ Carte
-                    </TabButton>
-                    <TabButton active={activeTab === 'stats'} onClick={() => setActiveTab('stats')}>
-                      📊 Statistiques
-                    </TabButton>
-                  </div>
-                </div>
-              </div>
-
+            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
               <div className="p-4 md:p-8">
                 <div className="max-w-[1600px] mx-auto">
-                  {activeTab === 'map' && !currentDepartment && (
+                  {!currentDepartment && (
                     <MapView
                       geoData={geoData}
                       bounds={bounds}
                       appState={appState}
                       convertToSVGPath={convertToSVGPath}
                       openModal={openModal}
-                      stats={stats}
-                      currentDepartment={currentDepartment}
                       mapZoom={mapZoom}
                       setMapZoom={setMapZoom}
                       mapPan={mapPan}
                       setMapPan={setMapPan}
                     />
-                  )}
-
-                  {activeTab === 'stats' && (
-                    <StatsView appState={appState} stats={stats} />
                   )}
                 </div>
               </div>
@@ -630,7 +587,6 @@
                   department={departmentInfo[currentDepartment]}
                   state={appState[currentDepartment]}
                   onClose={closeModal}
-                  onUpdate={(updates) => updateDepartment(currentDepartment, updates)}
                   geoData={geoData}
                   bounds={bounds}
                   getBounds={getBounds}
@@ -657,7 +613,7 @@
           );
         }
 
-        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats, currentDepartment, mapZoom, setMapZoom, mapPan, setMapPan }) {
+        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, mapZoom, setMapZoom, mapPan, setMapPan }) {
           const svgRef = React.useRef(null);
 
           React.useEffect(() => {
@@ -681,23 +637,16 @@
 
           return (
             <>
-              <header className="text-center mb-8">
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-2">🗺️ Ma Carte de France</h1>
+              <header className="text-center mb-10">
+                <h1 className="text-5xl md:text-6xl font-bold text-gray-800 mb-3">
+                  🗺️ Carte Interactive de France
+                </h1>
+                <p className="text-lg text-gray-600">
+                  Explorez les départements français · Cliquez pour agrandir
+                </p>
               </header>
 
-              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                  <StatItem number={stats.totalVisited} label="Départements" sublabel="visités" />
-                  <StatItem number={`${stats.percentVisited}%`} label="De la" sublabel="France" />
-                  <StatItem number={stats.regularCount} label="Visites" sublabel="régulières" />
-                  <StatItem number={stats.citiesCount} label="Villes" sublabel="visitées" />
-                  <StatItem number={stats.ratedCount} label="Depts" sublabel="notés" />
-                  <StatItem number={stats.avgRating} label="Note" sublabel="moyenne" />
-                  <StatItem number={stats.regionsCompleted} label="Régions" sublabel="complètes" />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-4 md:p-8 mb-8 map-container">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-10 mb-8 map-container">
                 {mapZoom > 1 && (
                   <div className="mb-4 flex items-center gap-4">
                     <button
@@ -744,9 +693,6 @@
                       const code = feature.properties.code;
                       const path = convertToSVGPath(feature.geometry.coordinates, bounds);
                       const state = appState[code];
-                      const totalCities = (departmentInfo[code]?.cities?.length || 5) + (state?.customCities?.length || 0);
-                      const visitedCount = state?.visitedCities?.length || 0;
-                      const visitPercent = totalCities > 0 ? Math.round((visitedCount / totalCities) * 100) : 0;
 
                       return (
                         <g key={code}>
@@ -759,99 +705,9 @@
                             filter="url(#departmentShadow)"
                             onClick={() => openModal(code)}
                           />
-                          <title>
-                            {departmentInfo[code]?.name} ({code})
-                            {visitedCount > 0 && ` - ${visitedCount}/${totalCities} villes (${visitPercent}%)`}
-                            {state?.rating > 0 && ` - ${'⭐'.repeat(state.rating)}`}
-                          </title>
+                          <title>{departmentInfo[code]?.name} ({code})</title>
                         </g>
                       );
-                    })}
-                  </g>
-
-                  <g id="city-markers">
-                    {geoData.features.map(feature => {
-                      const code = feature.properties.code;
-                      const state = appState[code];
-
-                      if (!state || state.visitedCities.length === 0) return null;
-
-                      return state.visitedCities.map((city, idx) => {
-                        let cityX, cityY;
-
-                        // Check if we have real GPS coordinates for this city
-                        if (CITY_COORDINATES[city]) {
-                          const [lon, lat] = CITY_COORDINATES[city];
-                          cityX = ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
-                          cityY = ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 1100;
-                        } else {
-                          // Fallback to department centroid with offset for cities without GPS data
-                          const coords = feature.geometry.coordinates;
-
-                          const getBoundingBox = (coordinates) => {
-                            let minLon = Infinity, maxLon = -Infinity;
-                            let minLat = Infinity, maxLat = -Infinity;
-
-                            const processCoords = (c) => {
-                              if (Array.isArray(c[0])) {
-                                c.forEach(processCoords);
-                              } else {
-                                minLon = Math.min(minLon, c[0]);
-                                maxLon = Math.max(maxLon, c[0]);
-                                minLat = Math.min(minLat, c[1]);
-                                maxLat = Math.max(maxLat, c[1]);
-                              }
-                            };
-
-                            processCoords(coordinates);
-                            const centerLon = (minLon + maxLon) / 2;
-                            const centerLat = (minLat + maxLat) / 2;
-                            const width = maxLon - minLon;
-                            const height = maxLat - minLat;
-
-                            return { centerLon, centerLat, width, height };
-                          };
-
-                          const bbox = getBoundingBox(coords);
-                          const x = ((bbox.centerLon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
-                          const y = ((bounds.maxLat - bbox.centerLat) / (bounds.maxLat - bounds.minLat)) * 1100;
-
-                          // Adaptive radius based on department size
-                          const baseRadius = Math.min(
-                            ((bbox.width / (bounds.maxLon - bounds.minLon)) * 1000) / 2,
-                            ((bbox.height / (bounds.maxLat - bounds.minLat)) * 1100) / 2
-                          );
-                          const radius = Math.max(15, Math.min(40, baseRadius * 0.6));
-
-                          // Small offset for cities without GPS data
-                          const citiesWithoutGPS = state.visitedCities.filter(c => !CITY_COORDINATES[c]);
-                          const fallbackIdx = citiesWithoutGPS.indexOf(city);
-
-                          if (citiesWithoutGPS.length === 1) {
-                            cityX = x;
-                            cityY = y;
-                          } else {
-                            const angle = (fallbackIdx / citiesWithoutGPS.length) * 2 * Math.PI;
-                            cityX = x + Math.cos(angle) * radius * 0.5;
-                            cityY = y + Math.sin(angle) * radius * 0.5;
-                          }
-                        }
-
-                        return (
-                          <g key={`${code}-${city}`}>
-                            <circle
-                              cx={cityX}
-                              cy={cityY}
-                              r="5"
-                              fill="#e74c3c"
-                              stroke="#fff"
-                              strokeWidth="2"
-                              className="city-marker"
-                            />
-                            <title>{city}</title>
-                          </g>
-                        );
-                      });
                     })}
                   </g>
                   </g>
@@ -1023,39 +879,9 @@
           );
         }
 
-        function DepartmentOverlay({ code, department, state, onClose, onUpdate, geoData, bounds, getBounds, convertToSVGPath, getDepartmentColor }) {
-          const [visitLevel, setVisitLevel] = useState(state.visitLevel);
-          const [visitedCities, setVisitedCities] = useState(state.visitedCities);
-          const [customCities, setCustomCities] = useState(state.customCities);
-          const [notes, setNotes] = useState(state.notes);
-          const [newCity, setNewCity] = useState('');
-          const [rating, setRating] = useState(state.rating || 0);
-
-          const toggleCity = (city) => {
-            setVisitedCities(prev =>
-              prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
-            );
-          };
-
-          const addCity = () => {
-            if (newCity.trim() && !customCities.includes(newCity.trim())) {
-              setCustomCities(prev => [...prev, newCity.trim()]);
-              setNewCity('');
-            }
-          };
-
-          const handleSave = () => {
-            onUpdate({
-              visitLevel,
-              visitedCities,
-              customCities,
-              notes,
-              rating
-            });
-            onClose();
-          };
-
-          const allCities = [...department.cities, ...customCities];
+        function DepartmentOverlay({ code, department, state, onClose, geoData, bounds, getBounds, convertToSVGPath, getDepartmentColor }) {
+          // Only show main cities (first 5-7 cities from the department)
+          const mainCities = department.cities.slice(0, 7).filter(city => CITY_COORDINATES[city]);
 
           // Get department bounding box for zoomed view
           const departmentFeature = geoData.features.find(f => f.properties.code === code);
@@ -1077,17 +903,25 @@
 
           return (
             <div className="department-overlay" onClick={onClose}>
-              <div className="department-view-container" onClick={(e) => e.stopPropagation()}>
-                {/* Main: Department Map Full Screen */}
-                <div className="department-map-full" onClick={onClose}>
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-4xl font-bold text-gray-800">
+              <div className="department-map-full" onClick={(e) => e.stopPropagation()}>
+                {/* Header with close button */}
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-5xl font-bold text-gray-800">
                       {department.name}
                     </h2>
-                    <span className="text-2xl text-gray-500">{code}</span>
+                    <p className="text-xl text-gray-500 mt-1">{code} · {mainCities.length} villes principales</p>
                   </div>
+                  <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-gray-600 text-5xl font-light leading-none transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
 
-                  <div className="flex-1 relative bg-gray-50 rounded-lg p-6">
+                {/* Department map */}
+                <div className="flex-1 relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 shadow-inner">
                     {(() => {
                       // Calculate SVG coordinates of the department
                       const projectPoint = ([lon, lat]) => {
@@ -1126,37 +960,62 @@
 
                       return (
                         <svg viewBox={viewBox} className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+                          <defs>
+                            {/* Gradient for city markers */}
+                            <radialGradient id="cityGradient">
+                              <stop offset="0%" stopColor="#ef4444" />
+                              <stop offset="100%" stopColor="#dc2626" />
+                            </radialGradient>
+                            {/* Glow effect */}
+                            <filter id="glow">
+                              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                              <feMerge>
+                                <feMergeNode in="coloredBlur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                              </feMerge>
+                            </filter>
+                          </defs>
+
                           {/* Department shape */}
                           <path
                             d={path}
                             fill={getDepartmentColor(code, state)}
-                            stroke="#333"
-                            strokeWidth="4"
+                            stroke="#1f2937"
+                            strokeWidth="5"
+                            opacity="0.95"
                           />
 
-                          {/* City markers */}
-                          {visitedCities.map(city => {
-                            if (!CITY_COORDINATES[city]) return null;
+                          {/* Main city markers */}
+                          {mainCities.map((city, index) => {
                             const [lon, lat] = CITY_COORDINATES[city];
                             const [cityX, cityY] = projectPoint([lon, lat]);
 
                             return (
-                              <g key={city}>
+                              <g key={city} filter="url(#glow)">
+                                {/* City marker */}
                                 <circle
                                   cx={cityX}
                                   cy={cityY}
-                                  r="18"
-                                  fill="#e74c3c"
+                                  r="22"
+                                  fill="url(#cityGradient)"
                                   stroke="#fff"
-                                  strokeWidth="4"
-                                />
+                                  strokeWidth="5"
+                                  opacity="0.95"
+                                >
+                                  <animate
+                                    attributeName="r"
+                                    values="22;26;22"
+                                    dur="2s"
+                                    begin={`${index * 0.2}s`}
+                                    repeatCount="indefinite"
+                                  />
+                                </circle>
+                                {/* City name */}
                                 <text
                                   x={cityX}
-                                  y={cityY + 35}
+                                  y={cityY + 45}
                                   textAnchor="middle"
-                                  fontSize="20"
-                                  fontWeight="bold"
-                                  className="fill-gray-800"
+                                  className="city-label"
                                 >
                                   {city}
                                 </text>
@@ -1167,78 +1026,11 @@
                       );
                     })()}
                   </div>
-                </div>
 
-                {/* Floating Info Panel */}
-                <div className="department-info-floating" onClick={(e) => e.stopPropagation()}>
-                  <div className="space-y-4">
-                    {/* Rating */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700">Note</span>
-                        {rating > 0 && <span className="text-xs text-gray-500">{rating}/5</span>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map(star => (
-                          <button
-                            key={star}
-                            onClick={() => setRating(star === rating ? 0 : star)}
-                            className="text-3xl transition-all hover:scale-110"
-                          >
-                            {star <= rating ? '⭐' : '☆'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Cities */}
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                        Villes ({visitedCities.length}/{allCities.length})
-                      </h3>
-                      <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-                        {allCities.map(city => (
-                          <button
-                            key={city}
-                            onClick={() => toggleCity(city)}
-                            className={`px-2.5 py-1 rounded-full text-xs transition-all flex items-center gap-1 ${
-                              visitedCities.includes(city)
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            {visitedCities.includes(city) && <span className="font-bold">✓</span>}
-                            <span>{city}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Notes */}
-                    <div>
-                      <label className="text-sm font-semibold text-gray-700 mb-2 block">Notes</label>
-                      <textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Vos souvenirs..."
-                        className="w-full px-2.5 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none text-sm"
-                        rows={3}
-                      />
-                    </div>
-
-                    {/* Save Button */}
-                    <button
-                      onClick={handleSave}
-                      className="w-full py-2.5 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      💾 Enregistrer
-                    </button>
-
-                    {/* Close hint */}
-                    <p className="text-xs text-center text-gray-500 mt-2">
-                      Cliquez en dehors pour fermer
-                    </p>
-                  </div>
+                  {/* Close hint */}
+                  <p className="text-center text-gray-500 mt-4 text-sm">
+                    Cliquez n'importe où pour revenir à la carte
+                  </p>
                 </div>
               </div>
             </div>
