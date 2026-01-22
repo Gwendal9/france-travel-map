@@ -93,13 +93,28 @@
         }
 
         .city-label {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             fill: #1f2937;
             text-shadow: 0 0 3px white, 0 0 6px white;
             pointer-events: none;
         }
-        
+
+        .department-tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: fadeIn 0.2s ease;
+        }
+
         @keyframes shimmer {
             0% { background-position: -200% 0; }
             100% { background-position: 200% 0; }
@@ -615,6 +630,7 @@
 
         function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, mapZoom, setMapZoom, mapPan, setMapPan }) {
           const svgRef = React.useRef(null);
+          const [tooltip, setTooltip] = useState({ visible: false, name: '', x: 0, y: 0 });
 
           React.useEffect(() => {
             const svg = svgRef.current;
@@ -633,6 +649,28 @@
           const handleReset = () => {
             setMapZoom(1);
             setMapPan({ x: 0, y: 0 });
+          };
+
+          const handleDepartmentMouseEnter = (e, code) => {
+            const deptName = departmentInfo[code]?.name;
+            setTooltip({
+              visible: true,
+              name: `${deptName} (${code})`,
+              x: e.clientX,
+              y: e.clientY
+            });
+          };
+
+          const handleDepartmentMouseMove = (e) => {
+            setTooltip(prev => ({
+              ...prev,
+              x: e.clientX,
+              y: e.clientY
+            }));
+          };
+
+          const handleDepartmentMouseLeave = () => {
+            setTooltip({ visible: false, name: '', x: 0, y: 0 });
           };
 
           return (
@@ -704,14 +742,29 @@
                             className="department-path"
                             filter="url(#departmentShadow)"
                             onClick={() => openModal(code)}
+                            onMouseEnter={(e) => handleDepartmentMouseEnter(e, code)}
+                            onMouseMove={handleDepartmentMouseMove}
+                            onMouseLeave={handleDepartmentMouseLeave}
                           />
-                          <title>{departmentInfo[code]?.name} ({code})</title>
                         </g>
                       );
                     })}
                   </g>
                   </g>
                 </svg>
+
+                {/* Tooltip */}
+                {tooltip.visible && (
+                  <div
+                    className="department-tooltip"
+                    style={{
+                      left: `${tooltip.x + 15}px`,
+                      top: `${tooltip.y + 15}px`
+                    }}
+                  >
+                    {tooltip.name}
+                  </div>
+                )}
 
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                   <h3 className="font-semibold text-gray-800 mb-3">Légende</h3>
@@ -880,8 +933,16 @@
         }
 
         function DepartmentOverlay({ code, department, state, onClose, geoData, bounds, getBounds, convertToSVGPath, getDepartmentColor }) {
-          // Only show main cities (first 5-7 cities from the department)
-          const mainCities = department.cities.slice(0, 7).filter(city => CITY_COORDINATES[city]);
+          // Get all cities that have GPS coordinates
+          const allAvailableCities = department.cities.filter(city => CITY_COORDINATES[city]);
+          const [searchTerm, setSearchTerm] = useState('');
+
+          // Filter cities based on search
+          const filteredCities = searchTerm
+            ? allAvailableCities.filter(city =>
+                city.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+            : allAvailableCities;
 
           // Get department bounding box for zoomed view
           const departmentFeature = geoData.features.find(f => f.properties.code === code);
@@ -905,12 +966,12 @@
             <div className="department-overlay" onClick={onClose}>
               <div className="department-map-full" onClick={(e) => e.stopPropagation()}>
                 {/* Header with close button */}
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h2 className="text-5xl font-bold text-gray-800">
+                    <h2 className="text-4xl font-bold text-gray-800">
                       {department.name}
                     </h2>
-                    <p className="text-xl text-gray-500 mt-1">{code} · {mainCities.length} villes principales</p>
+                    <p className="text-lg text-gray-500 mt-1">{code} · {allAvailableCities.length} villes disponibles</p>
                   </div>
                   <button
                     onClick={onClose}
@@ -920,8 +981,25 @@
                   </button>
                 </div>
 
+                {/* Search bar */}
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Rechercher une ville..."
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-lg"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {searchTerm && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      {filteredCities.length} ville{filteredCities.length !== 1 ? 's' : ''} trouvée{filteredCities.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+
                 {/* Department map */}
-                <div className="flex-1 relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 shadow-inner">
+                <div className="flex-1 relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 shadow-inner" style={{ minHeight: '400px' }}>
                     {(() => {
                       // Calculate SVG coordinates of the department
                       const projectPoint = ([lon, lat]) => {
@@ -985,40 +1063,38 @@
                             opacity="0.95"
                           />
 
-                          {/* Main city markers */}
-                          {mainCities.map((city, index) => {
+                          {/* City markers */}
+                          {filteredCities.map((city) => {
                             const [lon, lat] = CITY_COORDINATES[city];
                             const [cityX, cityY] = projectPoint([lon, lat]);
 
                             return (
-                              <g key={city} filter="url(#glow)">
+                              <g key={city}>
                                 {/* City marker */}
                                 <circle
                                   cx={cityX}
                                   cy={cityY}
-                                  r="22"
+                                  r="16"
                                   fill="url(#cityGradient)"
                                   stroke="#fff"
-                                  strokeWidth="5"
+                                  strokeWidth="4"
                                   opacity="0.95"
-                                >
-                                  <animate
-                                    attributeName="r"
-                                    values="22;26;22"
-                                    dur="2s"
-                                    begin={`${index * 0.2}s`}
-                                    repeatCount="indefinite"
-                                  />
-                                </circle>
-                                {/* City name */}
-                                <text
-                                  x={cityX}
-                                  y={cityY + 45}
-                                  textAnchor="middle"
-                                  className="city-label"
-                                >
-                                  {city}
-                                </text>
+                                  style={{ transition: 'all 0.3s ease' }}
+                                  className="hover:r-20"
+                                />
+                                {/* City name - only show if less than 15 cities or search is active */}
+                                {(filteredCities.length <= 15 || searchTerm) && (
+                                  <text
+                                    x={cityX}
+                                    y={cityY + 35}
+                                    textAnchor="middle"
+                                    className="city-label"
+                                  >
+                                    {city}
+                                  </text>
+                                )}
+                                {/* Show title for all cities */}
+                                <title>{city}</title>
                               </g>
                             );
                           })}
