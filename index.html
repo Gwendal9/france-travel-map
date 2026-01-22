@@ -439,7 +439,7 @@
           const [appState, setAppState] = useState(() => {
             const saved = localStorage.getItem('franceMapStateV2');
             if (saved) return JSON.parse(saved);
-            
+
             const initialState = {};
             Object.keys(departmentInfo).forEach(code => {
               initialState[code] = {
@@ -456,6 +456,8 @@
           const [modalOpen, setModalOpen] = useState(false);
           const [currentDepartment, setCurrentDepartment] = useState(null);
           const [activeTab, setActiveTab] = useState('map');
+          const [mapZoom, setMapZoom] = useState(1);
+          const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
 
           useEffect(() => {
             fetch(GEOJSON_URL)
@@ -532,29 +534,36 @@
             return paths.join(' ');
           };
 
-          const getBounds = () => {
+          const getBounds = (departmentCode = null) => {
             if (!geoData) return null;
-            
+
             let minLon = Infinity, maxLon = -Infinity;
             let minLat = Infinity, maxLat = -Infinity;
 
-            geoData.features.forEach(feature => {
-              const coords = feature.geometry.coordinates;
-              
-              const processCoords = (c) => {
-                if (Array.isArray(c[0])) {
-                  c.forEach(processCoords);
-                } else {
-                  const [lon, lat] = c;
-                  minLon = Math.min(minLon, lon);
-                  maxLon = Math.max(maxLon, lon);
-                  minLat = Math.min(minLat, lat);
-                  maxLat = Math.max(maxLat, lat);
-                }
-              };
+            const processCoords = (c) => {
+              if (Array.isArray(c[0])) {
+                c.forEach(processCoords);
+              } else {
+                const [lon, lat] = c;
+                minLon = Math.min(minLon, lon);
+                maxLon = Math.max(maxLon, lon);
+                minLat = Math.min(minLat, lat);
+                maxLat = Math.max(maxLat, lat);
+              }
+            };
 
-              processCoords(coords);
-            });
+            if (departmentCode) {
+              // Get bounds for specific department
+              const feature = geoData.features.find(f => f.properties.code === departmentCode);
+              if (feature) {
+                processCoords(feature.geometry.coordinates);
+              }
+            } else {
+              // Get bounds for all of France
+              geoData.features.forEach(feature => {
+                processCoords(feature.geometry.coordinates);
+              });
+            }
 
             return { minLon, maxLon, minLat, maxLat };
           };
@@ -603,6 +612,10 @@
                       openModal={openModal}
                       stats={stats}
                       currentDepartment={currentDepartment}
+                      mapZoom={mapZoom}
+                      setMapZoom={setMapZoom}
+                      mapPan={mapPan}
+                      setMapPan={setMapPan}
                     />
                   )}
 
@@ -621,6 +634,7 @@
                   onUpdate={(updates) => updateDepartment(currentDepartment, updates)}
                   geoData={geoData}
                   bounds={bounds}
+                  getBounds={getBounds}
                   convertToSVGPath={convertToSVGPath}
                   getDepartmentColor={getDepartmentColor}
                 />
@@ -644,7 +658,28 @@
           );
         }
 
-        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats, currentDepartment }) {
+        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, stats, currentDepartment, mapZoom, setMapZoom, mapPan, setMapPan }) {
+          const svgRef = React.useRef(null);
+
+          React.useEffect(() => {
+            const svg = svgRef.current;
+            if (!svg) return;
+
+            const handleWheel = (e) => {
+              e.preventDefault();
+              const delta = e.deltaY > 0 ? 0.9 : 1.1;
+              setMapZoom(prev => Math.max(1, Math.min(5, prev * delta)));
+            };
+
+            svg.addEventListener('wheel', handleWheel, { passive: false });
+            return () => svg.removeEventListener('wheel', handleWheel);
+          }, [setMapZoom]);
+
+          const handleReset = () => {
+            setMapZoom(1);
+            setMapPan({ x: 0, y: 0 });
+          };
+
           return (
             <>
               <header className="text-center mb-8">
@@ -664,7 +699,23 @@
               </div>
 
               <div className={`bg-white rounded-lg shadow-md p-4 md:p-8 mb-8 map-container ${currentDepartment ? 'map-blurred' : ''}`}>
-                <svg viewBox="0 0 1000 1100" className="w-full h-auto" style={{ minHeight: '600px' }}>
+                {mapZoom > 1 && (
+                  <div className="mb-4 flex items-center gap-4">
+                    <button
+                      onClick={handleReset}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Réinitialiser le zoom
+                    </button>
+                    <span className="text-sm text-gray-600">Zoom: {mapZoom.toFixed(1)}x</span>
+                  </div>
+                )}
+                <svg
+                  ref={svgRef}
+                  viewBox="0 0 1000 1100"
+                  className="w-full h-auto"
+                  style={{ minHeight: '600px', cursor: mapZoom > 1 ? 'grab' : 'default' }}
+                >
                   <defs>
                     {/* Gradient for water/ocean effect */}
                     <linearGradient id="oceanGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -687,7 +738,8 @@
                   
                   {/* Ocean background */}
                   <rect x="0" y="0" width="1000" height="1100" fill="url(#oceanGradient)" opacity="0.3"/>
-                  
+
+                  <g transform={`translate(${500 - 500 * mapZoom + mapPan.x}, ${550 - 550 * mapZoom + mapPan.y}) scale(${mapZoom})`}>
                   <g id="departments">
                     {geoData.features.map(feature => {
                       const code = feature.properties.code;
@@ -802,6 +854,7 @@
                         );
                       });
                     })}
+                  </g>
                   </g>
                 </svg>
 
@@ -971,7 +1024,7 @@
           );
         }
 
-        function DepartmentOverlay({ code, department, state, onClose, onUpdate, geoData, bounds, convertToSVGPath, getDepartmentColor }) {
+        function DepartmentOverlay({ code, department, state, onClose, onUpdate, geoData, bounds, getBounds, convertToSVGPath, getDepartmentColor }) {
           const [visitLevel, setVisitLevel] = useState(state.visitLevel);
           const [visitedCities, setVisitedCities] = useState(state.visitedCities);
           const [customCities, setCustomCities] = useState(state.customCities);
@@ -1009,6 +1062,20 @@
           const departmentFeature = geoData.features.find(f => f.properties.code === code);
           if (!departmentFeature) return null;
 
+          // Calculate zoomed bounds for this department
+          const deptBounds = getBounds(code);
+          if (!deptBounds) return null;
+
+          // Add padding around department (20%)
+          const lonPadding = (deptBounds.maxLon - deptBounds.minLon) * 0.2;
+          const latPadding = (deptBounds.maxLat - deptBounds.minLat) * 0.2;
+          const zoomedBounds = {
+            minLon: deptBounds.minLon - lonPadding,
+            maxLon: deptBounds.maxLon + lonPadding,
+            minLat: deptBounds.minLat - latPadding,
+            maxLat: deptBounds.maxLat + latPadding
+          };
+
           return (
             <div className="department-overlay" onClick={onClose}>
               <div className="department-detail-container" onClick={(e) => e.stopPropagation()}>
@@ -1027,49 +1094,84 @@
                   </div>
 
                   <div className="flex-1 bg-gray-50 rounded-lg p-4">
-                    <svg viewBox="0 0 1000 1100" className="w-full h-full">
-                      {/* Department shape */}
-                      {(() => {
-                        const path = convertToSVGPath(departmentFeature.geometry.coordinates, bounds);
-                        return (
+                    {(() => {
+                      // Calculate SVG coordinates of the department
+                      const projectPoint = ([lon, lat]) => {
+                        const x = ((lon - zoomedBounds.minLon) / (zoomedBounds.maxLon - zoomedBounds.minLon)) * 1000;
+                        const y = ((zoomedBounds.maxLat - lat) / (zoomedBounds.maxLat - zoomedBounds.minLat)) * 1100;
+                        return [x, y];
+                      };
+
+                      // Get all coordinates to find SVG bounding box
+                      let minX = Infinity, maxX = -Infinity;
+                      let minY = Infinity, maxY = -Infinity;
+
+                      const processCoords = (coords) => {
+                        if (Array.isArray(coords[0])) {
+                          coords.forEach(processCoords);
+                        } else {
+                          const [x, y] = projectPoint(coords);
+                          minX = Math.min(minX, x);
+                          maxX = Math.max(maxX, x);
+                          minY = Math.min(minY, y);
+                          maxY = Math.max(maxY, y);
+                        }
+                      };
+
+                      processCoords(departmentFeature.geometry.coordinates);
+
+                      // Add padding
+                      const padding = 50;
+                      const viewBoxX = minX - padding;
+                      const viewBoxY = minY - padding;
+                      const viewBoxWidth = (maxX - minX) + (padding * 2);
+                      const viewBoxHeight = (maxY - minY) + (padding * 2);
+                      const viewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
+
+                      const path = convertToSVGPath(departmentFeature.geometry.coordinates, zoomedBounds);
+
+                      return (
+                        <svg viewBox={viewBox} className="w-full h-full">
+                          {/* Department shape */}
                           <path
                             d={path}
                             fill={getDepartmentColor(code, state)}
                             stroke="#333"
                             strokeWidth="4"
                           />
-                        );
-                      })()}
 
-                      {/* City markers */}
-                      {visitedCities.map(city => {
-                        if (!CITY_COORDINATES[city]) return null;
-                        const [lon, lat] = CITY_COORDINATES[city];
-                        const cityX = ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 1000;
-                        const cityY = ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 1100;
+                          {/* City markers */}
+                          {visitedCities.map(city => {
+                            if (!CITY_COORDINATES[city]) return null;
+                            const [lon, lat] = CITY_COORDINATES[city];
+                            const [cityX, cityY] = projectPoint([lon, lat]);
 
-                        return (
-                          <g key={city}>
-                            <circle
-                              cx={cityX}
-                              cy={cityY}
-                              r="12"
-                              fill="#e74c3c"
-                              stroke="#fff"
-                              strokeWidth="4"
-                            />
-                            <text
-                              x={cityX}
-                              y={cityY + 25}
-                              textAnchor="middle"
-                              className="text-sm font-semibold fill-gray-800"
-                            >
-                              {city}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
+                            return (
+                              <g key={city}>
+                                <circle
+                                  cx={cityX}
+                                  cy={cityY}
+                                  r="18"
+                                  fill="#e74c3c"
+                                  stroke="#fff"
+                                  strokeWidth="4"
+                                />
+                                <text
+                                  x={cityX}
+                                  y={cityY + 35}
+                                  textAnchor="middle"
+                                  fontSize="18"
+                                  fontWeight="bold"
+                                  className="fill-gray-800"
+                                >
+                                  {city}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      );
+                    })()}
                   </div>
                 </div>
 
