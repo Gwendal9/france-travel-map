@@ -25,9 +25,7 @@
 
         .department-path:hover {
             filter: drop-shadow(0 8px 16px rgba(0,0,0,0.25)) brightness(1.15);
-            transform: scale(1.02);
             stroke-width: 3;
-            z-index: 10;
         }
 
         .department-path:active {
@@ -428,7 +426,7 @@
           return null;
         };
 
-        // Helper function to calculate color with opacity based on visit percentage
+        // Helper function to calculate color with opacity based on max visit level
         const getDepartmentColor = (code, state) => {
           const region = getDepartmentRegion(code);
           if (!region || !REGION_COLORS[region]) {
@@ -437,17 +435,36 @@
 
           const baseColor = REGION_COLORS[region];
 
-          // Calculate visit percentage (cities with level > 'never')
+          // Find the maximum visit level in this department
           const cityVisits = state?.cityVisits || {};
-          const visitedCities = Object.values(cityVisits).filter(level => level !== 'never').length;
-          const totalCities = departmentInfo[code]?.cities?.length || 5;
-          const visitPercent = totalCities > 0 ? visitedCities / totalCities : 0;
+          const visitLevels = Object.values(cityVisits);
 
-          // Opacity: 0.3 (transparent) when 0% visited, 1.0 (opaque) when 100% visited
-          const opacity = 0.3 + (visitPercent * 0.7);
+          let maxLevel = 'never';
+          if (visitLevels.includes('slept')) {
+            maxLevel = 'slept';
+          } else if (visitLevels.includes('ate')) {
+            maxLevel = 'ate';
+          } else if (visitLevels.includes('passed')) {
+            maxLevel = 'passed';
+          }
 
-          // Gradually increase intensity from 0% to 100% visited
-          const lightness = 0.7 * (1 - visitPercent);
+          // Opacity based on max level: slept=1.0, ate=0.75, passed=0.5, never=0.3
+          let opacity = 0.3;
+          let colorIntensity = 0;
+
+          if (maxLevel === 'slept') {
+            opacity = 1.0;
+            colorIntensity = 1.0;
+          } else if (maxLevel === 'ate') {
+            opacity = 0.75;
+            colorIntensity = 0.7;
+          } else if (maxLevel === 'passed') {
+            opacity = 0.5;
+            colorIntensity = 0.4;
+          }
+
+          // Color intensity based on max level
+          const lightness = 0.7 * (1 - colorIntensity);
           const r = Math.round(baseColor.r + (255 - baseColor.r) * lightness);
           const g = Math.round(baseColor.g + (255 - baseColor.g) * lightness);
           const b = Math.round(baseColor.b + (255 - baseColor.b) * lightness);
