@@ -1245,6 +1245,99 @@
             }));
           };
 
+          // Export/Import functions
+          const handleExport = () => {
+            const dataStr = JSON.stringify(appState, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `france-map-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+          };
+
+          const handleImport = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const imported = JSON.parse(e.target.result);
+                setAppState(imported);
+                alert('✅ Données importées avec succès !');
+              } catch (error) {
+                alert('❌ Erreur lors de l\'import : fichier invalide');
+                console.error(error);
+              }
+            };
+            reader.readAsText(file);
+          };
+
+          // Calculate statistics
+          const calculateStats = () => {
+            let totalCities = 0;
+            let visitedCities = 0;
+            let passedCities = 0;
+            let ateCities = 0;
+            let sleptCities = 0;
+
+            Object.values(appState).forEach(deptState => {
+              if (deptState.cityVisits) {
+                Object.values(deptState.cityVisits).forEach(level => {
+                  totalCities++;
+                  if (level !== 'never') visitedCities++;
+                  if (level === 'passed') passedCities++;
+                  if (level === 'ate') ateCities++;
+                  if (level === 'slept') sleptCities++;
+                });
+              }
+            });
+
+            // Departments with at least one visit
+            const deptsWithVisits = Object.entries(appState).filter(([code, state]) => {
+              if (!state.cityVisits) return false;
+              return Object.values(state.cityVisits).some(level => level !== 'never');
+            }).length;
+
+            // Stats by region
+            const regionStats = {};
+            Object.entries(REGIONS).forEach(([region, depts]) => {
+              let visitedInRegion = 0;
+              let totalInRegion = 0;
+
+              depts.forEach(code => {
+                const state = appState[code];
+                if (state && state.cityVisits) {
+                  Object.values(state.cityVisits).forEach(level => {
+                    totalInRegion++;
+                    if (level !== 'never') visitedInRegion++;
+                  });
+                }
+              });
+
+              regionStats[region] = {
+                visited: visitedInRegion,
+                total: totalInRegion,
+                percent: totalInRegion > 0 ? Math.round((visitedInRegion / totalInRegion) * 100) : 0
+              };
+            });
+
+            return {
+              totalCities,
+              visitedCities,
+              passedCities,
+              ateCities,
+              sleptCities,
+              deptsWithVisits,
+              percentVisited: Math.round((visitedCities / totalCities) * 100) || 0,
+              regionStats
+            };
+          };
+
+          const stats = calculateStats();
+
           const convertToSVGPath = (coordinates, bounds) => {
             const paths = [];
             
@@ -1330,7 +1423,38 @@
             <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
               <div className="p-4 md:p-8">
                 <div className="max-w-[1600px] mx-auto">
+                  {/* Navigation Tabs */}
                   {!currentDepartment && (
+                    <div className="mb-6">
+                      <div className="flex gap-2 bg-white rounded-lg p-2 shadow-md">
+                        <TabButton active={activeTab === 'map'} onClick={() => setActiveTab('map')}>
+                          🗺️ Carte
+                        </TabButton>
+                        <TabButton active={activeTab === 'stats'} onClick={() => setActiveTab('stats')}>
+                          📊 Statistiques
+                        </TabButton>
+                        <div className="flex-1"></div>
+                        <button
+                          onClick={handleExport}
+                          className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-semibold"
+                        >
+                          📥 Export
+                        </button>
+                        <label className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm font-semibold cursor-pointer">
+                          📤 Import
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleImport}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Content based on active tab */}
+                  {!currentDepartment && activeTab === 'map' && (
                     <MapView
                       geoData={geoData}
                       bounds={bounds}
@@ -1342,6 +1466,10 @@
                       mapPan={mapPan}
                       setMapPan={setMapPan}
                     />
+                  )}
+
+                  {!currentDepartment && activeTab === 'stats' && (
+                    <StatsView stats={stats} appState={appState} />
                   )}
                 </div>
               </div>
@@ -1785,97 +1913,114 @@
           );
         }
 
-        function StatsView({ appState, stats }) {
-          const regionStats = Object.entries(REGIONS).map(([region, depts]) => {
-            const visited = depts.filter(code => appState[code]?.visitLevel !== 'unvisited').length;
-            const total = depts.length;
-            const percent = Math.round((visited / total) * 100);
-            
-            return { region, visited, total, percent };
-          }).sort((a, b) => b.percent - a.percent);
-
-          const topRated = Object.entries(appState)
-            .filter(([_, state]) => state.rating > 0)
-            .sort((a, b) => b[1].rating - a[1].rating)
-            .slice(0, 10);
-
-          const ratingDistribution = [1, 2, 3, 4, 5].map(rating => ({
-            rating,
-            count: Object.values(appState).filter(s => s.rating === rating).length
-          }));
+        function StatsView({ stats, appState }) {
+          // Sort regions by completion percentage
+          const sortedRegions = Object.entries(stats.regionStats)
+            .sort((a, b) => b[1].percent - a[1].percent);
 
           return (
             <div className="space-y-8">
-              <h2 className="text-3xl font-bold text-gray-800">📊 Statistiques détaillées</h2>
+              <header className="text-center">
+                <h1 className="text-5xl md:text-6xl font-bold text-gray-800 mb-3">
+                  📊 Statistiques de Découverte
+                </h1>
+                <p className="text-lg text-gray-600">
+                  Votre progression à travers la France
+                </p>
+              </header>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <StatCard title="Départements visités" value={`${stats.totalVisited}/96`} subtitle={`${stats.percentVisited}% de la France`} />
-                <StatCard title="Régions complètes" value={`${stats.regionsCompleted}/13`} subtitle="Toutes visitées" />
-                <StatCard title="Note moyenne" value={stats.avgRating} subtitle={`⭐ sur 5 (${stats.ratedCount} notés)`} />
+              {/* Main Stats Cards */}
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard
+                  title="Villes visitées"
+                  value={`${stats.visitedCities}/${stats.totalCities}`}
+                  subtitle={`${stats.percentVisited}% du total`}
+                  icon="🏙️"
+                />
+                <StatCard
+                  title="Départements explorés"
+                  value={`${stats.deptsWithVisits}/96`}
+                  subtitle={`${Math.round((stats.deptsWithVisits / 96) * 100)}% de la France`}
+                  icon="🗺️"
+                />
+                <StatCard
+                  title="Villes dormies"
+                  value={stats.sleptCities}
+                  subtitle="Nuits passées 🟣"
+                  icon="🌙"
+                />
+                <StatCard
+                  title="Villes repas"
+                  value={stats.ateCities}
+                  subtitle="Repas pris 🟢"
+                  icon="🍽️"
+                />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Progression par région */}
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">Progression par région</h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {regionStats.map(({ region, visited, total, percent }) => (
-                      <div key={region}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium">{region}</span>
-                          <span className="text-gray-600">{visited}/{total} ({percent}%)</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full transition-all ${
-                              percent === 100 ? 'bg-green-500' : 'bg-blue-500'
-                            }`}
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+              {/* Visit Level Breakdown */}
+              <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                <h3 className="text-2xl font-bold text-gray-800 mb-6">Répartition par niveau de visite</h3>
+                <div className="grid md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-gray-50 rounded-lg">
+                    <div className="text-4xl mb-2">⚪</div>
+                    <div className="text-3xl font-bold text-gray-700">{stats.totalCities - stats.visitedCities}</div>
+                    <div className="text-sm text-gray-600">Jamais allé</div>
                   </div>
-                </div>
-
-                {/* Distribution des notes */}
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">Distribution des notes</h3>
-                  <div className="space-y-3">
-                    {ratingDistribution.reverse().map(({ rating, count }) => (
-                      <div key={rating} className="flex items-center gap-4">
-                        <span className="w-16 text-sm font-medium">{'⭐'.repeat(rating)}</span>
-                        <div className="flex-1 bg-gray-200 rounded-full h-6">
-                          <div 
-                            className="bg-yellow-500 h-6 rounded-full flex items-center justify-end pr-2"
-                            style={{ width: `${stats.ratedCount > 0 ? (count / stats.ratedCount) * 100 : 0}%` }}
-                          >
-                            {count > 0 && <span className="text-xs font-bold text-white">{count}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="text-center p-4 bg-orange-50 rounded-lg">
+                    <div className="text-4xl mb-2">🟡</div>
+                    <div className="text-3xl font-bold text-orange-600">{stats.passedCities}</div>
+                    <div className="text-sm text-gray-600">Déjà passé</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-4xl mb-2">🟢</div>
+                    <div className="text-3xl font-bold text-green-600">{stats.ateCities}</div>
+                    <div className="text-sm text-gray-600">Déjà mangé</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-4xl mb-2">🟣</div>
+                    <div className="text-3xl font-bold text-purple-600">{stats.sleptCities}</div>
+                    <div className="text-sm text-gray-600">Déjà dormi</div>
                   </div>
                 </div>
               </div>
 
-              {/* Top 10 Rated */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">🏆 Top 10 - Mieux notés</h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {topRated.map(([code, state], idx) => (
-                    <div key={code} className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-white rounded-lg border border-yellow-200">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl font-bold text-yellow-600">#{idx + 1}</span>
-                        <div>
-                          <div className="font-bold">{departmentInfo[code]?.name}</div>
-                          <div className="text-sm text-gray-600">{code}</div>
-                        </div>
+              {/* Regional Progress */}
+              <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                <h3 className="text-2xl font-bold text-gray-800 mb-6">Progression par région</h3>
+                <div className="space-y-4">
+                  {sortedRegions.map(([region, data]) => (
+                    <div key={region}>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-semibold text-gray-700">{region}</span>
+                        <span className="text-gray-600">
+                          {data.visited}/{data.total} villes ({data.percent}%)
+                        </span>
                       </div>
-                      <span className="text-2xl">{'⭐'.repeat(state.rating)}</span>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div
+                          className={`h-3 rounded-full transition-all ${
+                            data.percent === 100 ? 'bg-green-500' :
+                            data.percent >= 75 ? 'bg-blue-500' :
+                            data.percent >= 50 ? 'bg-yellow-500' :
+                            data.percent >= 25 ? 'bg-orange-500' : 'bg-red-400'
+                          }`}
+                          style={{ width: `${data.percent}%` }}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Export/Import reminder */}
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-center">
+                <h3 className="text-xl font-bold text-blue-900 mb-2">💾 Sauvegardez vos données</h3>
+                <p className="text-blue-700 mb-4">
+                  N'oubliez pas d'exporter régulièrement vos données pour ne pas les perdre !
+                </p>
+                <p className="text-sm text-blue-600">
+                  Utilisez les boutons Export/Import en haut de la page
+                </p>
               </div>
             </div>
           );
@@ -1891,12 +2036,15 @@
           );
         }
 
-        function StatCard({ title, value, subtitle }) {
+        function StatCard({ title, value, subtitle, icon }) {
           return (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-sm font-semibold text-gray-600 mb-2">{title}</h3>
-              <div className="text-3xl font-bold text-blue-600">{value}</div>
-              {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-600 uppercase">{title}</h3>
+                {icon && <span className="text-3xl">{icon}</span>}
+              </div>
+              <div className="text-4xl font-bold text-gray-800 mb-1">{value}</div>
+              {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
             </div>
           );
         }
@@ -2047,42 +2195,82 @@
                           />
 
                           {/* City markers */}
-                          {filteredCities.map((city) => {
-                            const [lon, lat] = CITY_COORDINATES[city];
-                            const [cityX, cityY] = projectPoint([lon, lat]);
-                            const visitLevel = getCityVisitLevel(city);
-                            const levelColor = VISIT_LEVELS[visitLevel].color;
-                            const isSelected = selectedCity === city;
+                          {(() => {
+                            // Calculate positions with collision detection
+                            const cityPositions = filteredCities.map((city) => {
+                              const [lon, lat] = CITY_COORDINATES[city];
+                              const [x, y] = projectPoint([lon, lat]);
+                              return { city, x, y, visitLevel: getCityVisitLevel(city) };
+                            });
 
-                            return (
-                              <g key={city} style={{ cursor: 'pointer' }} onClick={() => handleCityClick(city)}>
-                                {/* City marker */}
-                                <circle
-                                  cx={cityX}
-                                  cy={cityY}
-                                  r={isSelected ? "20" : "16"}
-                                  fill={levelColor}
-                                  stroke={isSelected ? "#000" : "#fff"}
-                                  strokeWidth={isSelected ? "6" : "4"}
-                                  opacity="0.95"
-                                  style={{ transition: 'all 0.3s ease' }}
-                                />
-                                {/* City name - only show if less than 15 cities or search is active */}
-                                {(filteredCities.length <= 15 || searchTerm) && (
-                                  <text
-                                    x={cityX}
-                                    y={cityY + 35}
-                                    textAnchor="middle"
-                                    className="city-label"
-                                  >
-                                    {city}
-                                  </text>
-                                )}
-                                {/* Show title for all cities */}
-                                <title>{city} - {VISIT_LEVELS[visitLevel].label}</title>
-                              </g>
-                            );
-                          })}
+                            // Anti-collision algorithm: separate overlapping markers
+                            const minDistance = 40; // Minimum distance between markers
+                            const adjustedPositions = cityPositions.map((pos, i) => {
+                              let { x, y } = pos;
+                              let attempts = 0;
+                              const maxAttempts = 10;
+
+                              // Check collision with previously placed cities
+                              while (attempts < maxAttempts) {
+                                let hasCollision = false;
+
+                                for (let j = 0; j < i; j++) {
+                                  const other = adjustedPositions[j];
+                                  const dx = x - other.x;
+                                  const dy = y - other.y;
+                                  const distance = Math.sqrt(dx * dx + dy * dy);
+
+                                  if (distance < minDistance) {
+                                    // Push away from collision
+                                    const angle = Math.atan2(dy, dx);
+                                    const pushDistance = (minDistance - distance) / 2;
+                                    x += Math.cos(angle) * pushDistance;
+                                    y += Math.sin(angle) * pushDistance;
+                                    hasCollision = true;
+                                  }
+                                }
+
+                                if (!hasCollision) break;
+                                attempts++;
+                              }
+
+                              return { ...pos, x, y };
+                            });
+
+                            return adjustedPositions.map(({ city, x, y, visitLevel }) => {
+                              const levelColor = VISIT_LEVELS[visitLevel].color;
+                              const isSelected = selectedCity === city;
+
+                              return (
+                                <g key={city} style={{ cursor: 'pointer' }} onClick={() => handleCityClick(city)}>
+                                  {/* City marker */}
+                                  <circle
+                                    cx={x}
+                                    cy={y}
+                                    r={isSelected ? "20" : "16"}
+                                    fill={levelColor}
+                                    stroke={isSelected ? "#000" : "#fff"}
+                                    strokeWidth={isSelected ? "6" : "4"}
+                                    opacity="0.95"
+                                    style={{ transition: 'all 0.3s ease' }}
+                                  />
+                                  {/* City name - only show if less than 15 cities or search is active */}
+                                  {(filteredCities.length <= 15 || searchTerm) && (
+                                    <text
+                                      x={x}
+                                      y={y + 35}
+                                      textAnchor="middle"
+                                      className="city-label"
+                                    >
+                                      {city}
+                                    </text>
+                                  )}
+                                  {/* Show title for all cities */}
+                                  <title>{city} - {VISIT_LEVELS[visitLevel].label}</title>
+                                </g>
+                              );
+                            });
+                          })()}
                         </svg>
                       );
                     })()}
