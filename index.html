@@ -1179,6 +1179,175 @@
                     })}
                   </g>
                   </g>
+
+                  {/* Mini Île-de-France inset map */}
+                  {(() => {
+                    const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
+
+                    // Calculate bounds for Île-de-France only
+                    let idfMinLon = Infinity, idfMaxLon = -Infinity;
+                    let idfMinLat = Infinity, idfMaxLat = -Infinity;
+
+                    const idfFeatures = geoData.features.filter(f => idfDepts.includes(f.properties.code));
+
+                    const processIdfCoords = (c) => {
+                      if (Array.isArray(c[0])) {
+                        c.forEach(processIdfCoords);
+                      } else {
+                        const [lon, lat] = c;
+                        idfMinLon = Math.min(idfMinLon, lon);
+                        idfMaxLon = Math.max(idfMaxLon, lon);
+                        idfMinLat = Math.min(idfMinLat, lat);
+                        idfMaxLat = Math.max(idfMaxLat, lat);
+                      }
+                    };
+
+                    idfFeatures.forEach(feature => {
+                      processIdfCoords(feature.geometry.coordinates);
+                    });
+
+                    // Add padding
+                    const lonPadding = (idfMaxLon - idfMinLon) * 0.1;
+                    const latPadding = (idfMaxLat - idfMinLat) * 0.1;
+                    const idfBounds = {
+                      minLon: idfMinLon - lonPadding,
+                      maxLon: idfMaxLon + lonPadding,
+                      minLat: idfMinLat - latPadding,
+                      maxLat: idfMaxLat + latPadding
+                    };
+
+                    // Inset position and size (bottom-right corner)
+                    const insetX = 700;
+                    const insetY = 850;
+                    const insetWidth = 280;
+                    const insetHeight = 240;
+
+                    return (
+                      <g id="idf-inset">
+                        {/* White background with border */}
+                        <rect
+                          x={insetX - 5}
+                          y={insetY - 5}
+                          width={insetWidth + 10}
+                          height={insetHeight + 10}
+                          fill="white"
+                          stroke="#333"
+                          strokeWidth="3"
+                          opacity="0.95"
+                          rx="8"
+                        />
+
+                        {/* Title */}
+                        <text
+                          x={insetX + insetWidth / 2}
+                          y={insetY + 15}
+                          textAnchor="middle"
+                          style={{ fontSize: '14px', fontWeight: 'bold', fill: '#1f2937' }}
+                        >
+                          Île-de-France
+                        </text>
+
+                        {/* Departments in IDF */}
+                        <g transform={`translate(${insetX}, ${insetY + 25})`}>
+                          <svg viewBox="0 0 1000 1100" width={insetWidth} height={insetHeight - 30}>
+                            {idfFeatures.map(feature => {
+                              const code = feature.properties.code;
+                              const path = convertToSVGPath(feature.geometry.coordinates, idfBounds);
+                              const state = appState[code];
+
+                              return (
+                                <g key={`idf-${code}`}>
+                                  <path
+                                    d={path}
+                                    fill={getDepartmentColor(code, state)}
+                                    stroke="#fff"
+                                    strokeWidth="4"
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => openModal(code)}
+                                  />
+                                  {/* Department number label */}
+                                  {(() => {
+                                    // Calculate centroid for label placement
+                                    const coords = feature.geometry.coordinates;
+                                    let sumLon = 0, sumLat = 0, count = 0;
+
+                                    const sumCoords = (c) => {
+                                      if (Array.isArray(c[0])) {
+                                        c.forEach(sumCoords);
+                                      } else {
+                                        sumLon += c[0];
+                                        sumLat += c[1];
+                                        count++;
+                                      }
+                                    };
+
+                                    sumCoords(coords);
+
+                                    if (count > 0) {
+                                      const centroidLon = sumLon / count;
+                                      const centroidLat = sumLat / count;
+                                      const labelX = ((centroidLon - idfBounds.minLon) / (idfBounds.maxLon - idfBounds.minLon)) * 1000;
+                                      const labelY = ((idfBounds.maxLat - centroidLat) / (idfBounds.maxLat - idfBounds.minLat)) * 1100;
+
+                                      return (
+                                        <text
+                                          x={labelX}
+                                          y={labelY}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          style={{
+                                            fontSize: '16px',
+                                            fontWeight: 'bold',
+                                            fill: '#1f2937',
+                                            textShadow: '0 0 3px white, 0 0 6px white',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          {code}
+                                        </text>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                </g>
+                              );
+                            })}
+
+                            {/* City markers in IDF inset */}
+                            {Object.entries(appState)
+                              .filter(([deptCode]) => idfDepts.includes(deptCode))
+                              .map(([deptCode, deptState]) => {
+                                if (!deptState.cityVisits) return null;
+
+                                return Object.entries(deptState.cityVisits).map(([cityName, visitLevel]) => {
+                                  if (visitLevel === 'never' || !CITY_COORDINATES[cityName]) return null;
+
+                                  const [lon, lat] = CITY_COORDINATES[cityName];
+                                  const cityX = ((lon - idfBounds.minLon) / (idfBounds.maxLon - idfBounds.minLon)) * 1000;
+                                  const cityY = ((idfBounds.maxLat - lat) / (idfBounds.maxLat - idfBounds.minLat)) * 1100;
+                                  const levelColor = VISIT_LEVELS[visitLevel].color;
+
+                                  return (
+                                    <g key={`idf-city-${deptCode}-${cityName}`}>
+                                      <circle
+                                        cx={cityX}
+                                        cy={cityY}
+                                        r="6"
+                                        fill={levelColor}
+                                        stroke="#fff"
+                                        strokeWidth="2"
+                                        opacity="0.9"
+                                      />
+                                      <title>{cityName} - {VISIT_LEVELS[visitLevel].label}</title>
+                                    </g>
+                                  );
+                                });
+                              })}
+                          </svg>
+                        </g>
+                      </g>
+                    );
+                  })()}
                 </svg>
 
                 {/* Tooltip */}
