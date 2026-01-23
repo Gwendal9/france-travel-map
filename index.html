@@ -1465,6 +1465,7 @@
                       setMapZoom={setMapZoom}
                       mapPan={mapPan}
                       setMapPan={setMapPan}
+                      getDepartmentColor={getDepartmentColor}
                     />
                   )}
 
@@ -1507,7 +1508,7 @@
           );
         }
 
-        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, mapZoom, setMapZoom, mapPan, setMapPan }) {
+        function MapView({ geoData, bounds, appState, convertToSVGPath, openModal, mapZoom, setMapZoom, mapPan, setMapPan, getDepartmentColor }) {
           const svgRef = React.useRef(null);
           const [tooltip, setTooltip] = useState({ visible: false, name: '', x: 0, y: 0 });
 
