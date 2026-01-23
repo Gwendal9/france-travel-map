@@ -2217,7 +2217,10 @@
 
                             // Anti-collision algorithm: separate overlapping markers
                             const minDistance = 40; // Minimum distance between markers
-                            const adjustedPositions = cityPositions.map((pos, i) => {
+                            const adjustedPositions = [];
+
+                            for (let i = 0; i < cityPositions.length; i++) {
+                              const pos = cityPositions[i];
                               let { x, y } = pos;
                               let attempts = 0;
                               const maxAttempts = 10;
@@ -2226,7 +2229,7 @@
                               while (attempts < maxAttempts) {
                                 let hasCollision = false;
 
-                                for (let j = 0; j < i; j++) {
+                                for (let j = 0; j < adjustedPositions.length; j++) {
                                   const other = adjustedPositions[j];
                                   const dx = x - other.x;
                                   const dy = y - other.y;
@@ -2246,8 +2249,8 @@
                                 attempts++;
                               }
 
-                              return { ...pos, x, y };
-                            });
+                              adjustedPositions.push({ ...pos, x, y });
+                            }
 
                             return adjustedPositions.map(({ city, x, y, visitLevel }) => {
                               const levelColor = VISIT_LEVELS[visitLevel].color;
